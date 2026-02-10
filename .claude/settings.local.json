@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(rustc:*)",
+      "Bash(cargo:*)",
+      "Bash(node:*)",
+      "Bash(npm --version:*)",
+      "Bash(git --version:*)",
+      "Bash(export PATH=\"$PATH:/c/Users/tvmar/.cargo/bin:/c/Users/tvmar/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin\")",
+      "mcp__serena__list_dir",
+      "Bash(where:*)",
+      "mcp__serena__activate_project"
+    ],
+    "additionalDirectories": [
+      "d:\\claudeManage\\townui"
+    ]
+  }
+}
