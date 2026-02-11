@@ -95,13 +95,165 @@ fn spawn_worker_inner(
         cmd.env(k, v);
     }
 
-    // For claude CLI, pass the prompt as an argument
-    if agent_type == "claude" {
-        cmd.args(["--print", &initial_prompt]);
-    } else {
-        // For custom commands, pass prompt as first argument
-        if !initial_prompt.is_empty() {
-            cmd.arg(&initial_prompt);
+    // Agent-specific argument patterns
+    match agent_type.as_str() {
+        // ── Anthropic Claude Code ──
+        "claude" => {
+            cmd.args(["--print", &initial_prompt]);
+        }
+        // ── OpenAI Codex CLI ──
+        "codex" => {
+            cmd.args(["--quiet", &initial_prompt]);
+        }
+        // ── OpenAI ChatGPT CLI ──
+        "chatgpt" => {
+            if !initial_prompt.is_empty() {
+                cmd.args(["--prompt", &initial_prompt]);
+            }
+        }
+        // ── Google Gemini CLI ──
+        "gemini" => {
+            if !initial_prompt.is_empty() {
+                cmd.args(["--prompt", &initial_prompt]);
+            }
+        }
+        // ── GitHub Copilot CLI ──
+        "copilot" => {
+            cmd.args(["copilot", "suggest", &initial_prompt]);
+        }
+        // ── Amazon Q Developer CLI ──
+        "amazon-q" => {
+            cmd.args(["chat", &initial_prompt]);
+        }
+        // ── Aider (open-source pair programmer) ──
+        "aider" => {
+            cmd.args(["--message", &initial_prompt, "--yes-always", "--no-git"]);
+        }
+        // ── Goose (Block open-source agent) ──
+        "goose" => {
+            cmd.args(["session", "--message", &initial_prompt]);
+        }
+        // ── OpenHands (formerly OpenDevin) ──
+        "openhands" => {
+            cmd.args(["run", "--task", &initial_prompt]);
+        }
+        // ── SWE-Agent (Princeton) ──
+        "swe-agent" => {
+            cmd.args(["run", "--task", &initial_prompt]);
+        }
+        // ── Mentat (ABI Labs) ──
+        "mentat" => {
+            if !initial_prompt.is_empty() {
+                cmd.args(["--prompt", &initial_prompt]);
+            }
+        }
+        // ── GPT Engineer ──
+        "gpt-engineer" => {
+            if !initial_prompt.is_empty() {
+                cmd.args(["--prompt", &initial_prompt]);
+            }
+        }
+        // ── Cline CLI ──
+        "cline" => {
+            cmd.args(["--message", &initial_prompt]);
+        }
+        // ── Continue CLI ──
+        "continue" => {
+            if !initial_prompt.is_empty() {
+                cmd.args(["--prompt", &initial_prompt]);
+            }
+        }
+        // ── Tabby ──
+        "tabby" => {
+            cmd.args(["chat", &initial_prompt]);
+        }
+        // ── Roo Code ──
+        "roo" => {
+            cmd.args(["--message", &initial_prompt]);
+        }
+        // ── Sweep AI ──
+        "sweep" => {
+            cmd.args(["run", &initial_prompt]);
+        }
+        // ── Auto-Coder ──
+        "auto-coder" => {
+            cmd.args(["--task", &initial_prompt]);
+        }
+        // ── Cursor CLI ──
+        "cursor" => {
+            cmd.args(["--prompt", &initial_prompt]);
+        }
+        // ── Windsurf CLI ──
+        "windsurf" => {
+            cmd.args(["--prompt", &initial_prompt]);
+        }
+        // ── Trae (ByteDance) ──
+        "trae" => {
+            if !initial_prompt.is_empty() {
+                cmd.args(["--prompt", &initial_prompt]);
+            }
+        }
+        // ── Augment Code ──
+        "augment" => {
+            cmd.args(["--message", &initial_prompt]);
+        }
+        // ── PearAI ──
+        "pear" => {
+            if !initial_prompt.is_empty() {
+                cmd.args(["--prompt", &initial_prompt]);
+            }
+        }
+        // ── Void Editor ──
+        "void" => {
+            if !initial_prompt.is_empty() {
+                cmd.args(["--prompt", &initial_prompt]);
+            }
+        }
+        // ── Sourcegraph Cody ──
+        "cody" => {
+            cmd.args(["chat", "--message", &initial_prompt]);
+        }
+        // ── Tabnine ──
+        "tabnine" => {
+            if !initial_prompt.is_empty() {
+                cmd.args(["--prompt", &initial_prompt]);
+            }
+        }
+        // ── Supermaven ──
+        "supermaven" => {
+            if !initial_prompt.is_empty() {
+                cmd.args(["--prompt", &initial_prompt]);
+            }
+        }
+        // ── CodeStory (Aide) ──
+        "codestory" => {
+            if !initial_prompt.is_empty() {
+                cmd.args(["--prompt", &initial_prompt]);
+            }
+        }
+        // ── Double ──
+        "double" => {
+            if !initial_prompt.is_empty() {
+                cmd.args(["--prompt", &initial_prompt]);
+            }
+        }
+        // ── Devin (Cognition) ──
+        "devin" => {
+            cmd.args(["run", "--task", &initial_prompt]);
+        }
+        // ── Replit Agent ──
+        "replit" => {
+            cmd.args(["agent", "--task", &initial_prompt]);
+        }
+        // ── Bolt.new ──
+        "bolt" => {
+            cmd.args(["--prompt", &initial_prompt]);
+        }
+        // ── Custom / unknown: pass prompt as argument ──
+        _ => {
+            if !initial_prompt.is_empty() {
+                cmd.arg(&initial_prompt);
+            }
         }
     }
 

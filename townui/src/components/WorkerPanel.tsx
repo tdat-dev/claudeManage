@@ -7,12 +7,23 @@ interface WorkerPanelProps {
   workers: WorkerInfo[];
   crews: CrewInfo[];
   loading: boolean;
-  onSpawn: (crewId: string, agentType: string, initialPrompt: string) => Promise<void>;
+  onSpawn: (
+    crewId: string,
+    agentType: string,
+    initialPrompt: string,
+  ) => Promise<void>;
   onStop: (id: string) => void;
   onGetLogs: (id: string) => Promise<LogEntry[]>;
 }
 
-export default function WorkerPanel({ workers, crews, loading, onSpawn, onStop, onGetLogs }: WorkerPanelProps) {
+export default function WorkerPanel({
+  workers,
+  crews,
+  loading,
+  onSpawn,
+  onStop,
+  onGetLogs,
+}: WorkerPanelProps) {
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showSpawn, setShowSpawn] = useState(false);
@@ -79,31 +90,82 @@ export default function WorkerPanel({ workers, crews, loading, onSpawn, onStop, 
           <div className="space-y-3">
             <div className="flex gap-3">
               <div className="flex-1">
-                <label className="block text-xs text-town-text-muted mb-1">Crew</label>
+                <label className="block text-xs text-town-text-muted mb-1">
+                  Crew
+                </label>
                 <select
                   value={crewId}
                   onChange={(e) => setCrewId(e.target.value)}
                   className="w-full bg-town-bg border border-town-border rounded px-3 py-1.5 text-sm"
                 >
                   {crews.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
                   ))}
                 </select>
               </div>
               <div className="flex-1">
-                <label className="block text-xs text-town-text-muted mb-1">Agent</label>
+                <label className="block text-xs text-town-text-muted mb-1">
+                  Agent
+                </label>
                 <select
                   value={agentType}
                   onChange={(e) => setAgentType(e.target.value)}
                   className="w-full bg-town-bg border border-town-border rounded px-3 py-1.5 text-sm"
                 >
-                  <option value="claude">Claude Code</option>
-                  <option value="custom">Custom Command</option>
+                  <optgroup label="Major Providers">
+                    <option value="claude">Claude Code (Anthropic)</option>
+                    <option value="codex">Codex CLI (OpenAI)</option>
+                    <option value="chatgpt">ChatGPT CLI (OpenAI)</option>
+                    <option value="gemini">Gemini CLI (Google)</option>
+                    <option value="copilot">GitHub Copilot CLI</option>
+                    <option value="amazon-q">Amazon Q Developer</option>
+                  </optgroup>
+                  <optgroup label="Open-Source Agents">
+                    <option value="aider">Aider</option>
+                    <option value="goose">Goose (Block)</option>
+                    <option value="openhands">OpenHands</option>
+                    <option value="swe-agent">SWE-Agent</option>
+                    <option value="mentat">Mentat</option>
+                    <option value="gpt-engineer">GPT Engineer</option>
+                    <option value="cline">Cline</option>
+                    <option value="continue">Continue</option>
+                    <option value="tabby">Tabby</option>
+                    <option value="roo">Roo Code</option>
+                    <option value="sweep">Sweep AI</option>
+                    <option value="auto-coder">Auto-Coder</option>
+                  </optgroup>
+                  <optgroup label="IDE Agents (CLI mode)">
+                    <option value="cursor">Cursor</option>
+                    <option value="windsurf">Windsurf (Codeium)</option>
+                    <option value="trae">Trae (ByteDance)</option>
+                    <option value="augment">Augment Code</option>
+                    <option value="pear">PearAI</option>
+                    <option value="void">Void Editor</option>
+                  </optgroup>
+                  <optgroup label="Code Assistants">
+                    <option value="cody">Cody (Sourcegraph)</option>
+                    <option value="tabnine">Tabnine</option>
+                    <option value="supermaven">Supermaven</option>
+                    <option value="codestory">CodeStory / Aide</option>
+                    <option value="double">Double</option>
+                  </optgroup>
+                  <optgroup label="Cloud Agents">
+                    <option value="devin">Devin (Cognition)</option>
+                    <option value="replit">Replit Agent</option>
+                    <option value="bolt">Bolt.new</option>
+                  </optgroup>
+                  <optgroup label="Other">
+                    <option value="custom">Custom Command</option>
+                  </optgroup>
                 </select>
               </div>
             </div>
             <div>
-              <label className="block text-xs text-town-text-muted mb-1">Initial Prompt</label>
+              <label className="block text-xs text-town-text-muted mb-1">
+                Initial Prompt
+              </label>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
@@ -126,12 +188,16 @@ export default function WorkerPanel({ workers, crews, loading, onSpawn, onStop, 
       {/* Worker list */}
       <div className="grid grid-cols-1 gap-2 mb-4">
         {workers.length === 0 ? (
-          <p className="text-sm text-town-text-muted py-4 text-center">No workers running.</p>
+          <p className="text-sm text-town-text-muted py-4 text-center">
+            No workers running.
+          </p>
         ) : (
           workers.map((w) => (
             <div
               key={w.id}
-              onClick={() => setSelectedWorkerId(w.id === selectedWorkerId ? null : w.id)}
+              onClick={() =>
+                setSelectedWorkerId(w.id === selectedWorkerId ? null : w.id)
+              }
               className={`bg-town-surface border rounded-lg p-3 cursor-pointer transition-colors ${
                 w.id === selectedWorkerId
                   ? "border-town-accent"
@@ -141,7 +207,9 @@ export default function WorkerPanel({ workers, crews, loading, onSpawn, onStop, 
               <div className="flex items-center justify-between">
                 <div>
                   <span className="text-sm font-medium">{w.agent_type}</span>
-                  <span className="text-xs text-town-text-muted ml-2">PID: {w.pid || "—"}</span>
+                  <span className="text-xs text-town-text-muted ml-2">
+                    PID: {w.pid || "—"}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span
@@ -149,8 +217,8 @@ export default function WorkerPanel({ workers, crews, loading, onSpawn, onStop, 
                       w.status === "running"
                         ? "bg-town-success/10 text-town-success"
                         : w.status === "failed"
-                        ? "bg-town-danger/10 text-town-danger"
-                        : "bg-town-text-muted/10 text-town-text-muted"
+                          ? "bg-town-danger/10 text-town-danger"
+                          : "bg-town-text-muted/10 text-town-text-muted"
                     }`}
                   >
                     {w.status}
@@ -179,7 +247,10 @@ export default function WorkerPanel({ workers, crews, loading, onSpawn, onStop, 
       {/* Log viewer */}
       {selectedWorkerId && (
         <div className="mt-4">
-          <LogViewer logs={logs} title={`Worker ${selectedWorkerId.slice(0, 8)}...`} />
+          <LogViewer
+            logs={logs}
+            title={`Worker ${selectedWorkerId.slice(0, 8)}...`}
+          />
         </div>
       )}
     </div>
