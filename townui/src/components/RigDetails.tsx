@@ -1,4 +1,9 @@
+import { useState } from "react";
 import { RigInfo } from "../lib/tauri";
+import { useCrews } from "../hooks/useCrews";
+import CrewList from "./CrewList";
+import CrewCreateDialog from "./CrewCreateDialog";
+import { invoke } from "@tauri-apps/api/core";
 
 interface RigDetailsProps {
   rig: RigInfo;
@@ -7,10 +12,26 @@ interface RigDetailsProps {
 }
 
 export default function RigDetails({ rig, onDelete, onRefresh }: RigDetailsProps) {
+  const { crews, branches, loading: crewsLoading, addCrew, removeCrew, refresh: refreshCrews } = useCrews(rig.id);
+  const [showCrewCreate, setShowCrewCreate] = useState(false);
+
   const handleDelete = () => {
     if (confirm(`Delete rig "${rig.name}"? This only removes it from TownUI — your files are not affected.`)) {
       onDelete(rig.id);
     }
+  };
+
+  const handleOpenExplorer = async (path: string) => {
+    try {
+      await invoke("open_in_explorer", { path });
+    } catch {
+      // Fallback: just ignore if command not available
+    }
+  };
+
+  const handleRefresh = () => {
+    onRefresh();
+    refreshCrews();
   };
 
   return (
@@ -22,7 +43,7 @@ export default function RigDetails({ rig, onDelete, onRefresh }: RigDetailsProps
         </div>
         <div className="flex gap-2">
           <button
-            onClick={onRefresh}
+            onClick={handleRefresh}
             className="px-3 py-1.5 rounded text-sm bg-town-border hover:bg-town-text-muted/20 transition-colors"
             title="Refresh git status"
           >
@@ -80,7 +101,30 @@ export default function RigDetails({ rig, onDelete, onRefresh }: RigDetailsProps
             </div>
           </div>
         </div>
+
+        {/* Crews Section */}
+        {rig.is_git_repo && (
+          <div className="bg-town-surface border border-town-border rounded-lg p-4">
+            <CrewList
+              crews={crews}
+              loading={crewsLoading}
+              onCreateClick={() => setShowCrewCreate(true)}
+              onDelete={removeCrew}
+              onOpenExplorer={handleOpenExplorer}
+            />
+          </div>
+        )}
       </div>
+
+      {showCrewCreate && (
+        <CrewCreateDialog
+          branches={branches}
+          onCreated={async (name, baseBranch) => {
+            await addCrew(name, baseBranch);
+          }}
+          onClose={() => setShowCrewCreate(false)}
+        />
+      )}
     </div>
   );
 }

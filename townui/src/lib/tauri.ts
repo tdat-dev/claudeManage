@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
+// ── Rig types ──
+
 export interface RigInfo {
   id: string;
   name: string;
@@ -25,4 +27,200 @@ export async function getRig(id: string): Promise<RigInfo> {
 
 export async function deleteRig(id: string): Promise<void> {
   return invoke<void>("delete_rig", { id });
+}
+
+// ── Crew types ──
+
+export interface CrewInfo {
+  id: string;
+  rig_id: string;
+  name: string;
+  branch: string;
+  path: string;
+  created_at: string;
+  status: string;
+  git_branch: string | null;
+  git_status: string | null;
+  changed_files: number;
+}
+
+export async function listCrews(rigId: string): Promise<CrewInfo[]> {
+  return invoke<CrewInfo[]>("list_crews", { rigId });
+}
+
+export async function createCrew(rigId: string, name: string, baseBranch: string): Promise<CrewInfo> {
+  return invoke<CrewInfo>("create_crew", { rigId, name, baseBranch });
+}
+
+export async function getCrew(id: string): Promise<CrewInfo> {
+  return invoke<CrewInfo>("get_crew", { id });
+}
+
+export async function deleteCrew(id: string): Promise<void> {
+  return invoke<void>("delete_crew", { id });
+}
+
+export async function listBranches(rigId: string): Promise<string[]> {
+  return invoke<string[]>("list_branches", { rigId });
+}
+
+// ── Task types ──
+
+export type TaskPriority = "low" | "medium" | "high" | "critical";
+export type TaskStatus = "todo" | "in_progress" | "done" | "cancelled";
+
+export interface TaskItem {
+  id: string;
+  rig_id: string;
+  title: string;
+  description: string;
+  tags: string[];
+  priority: TaskPriority;
+  status: TaskStatus;
+  assigned_worker_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskUpdate {
+  title?: string;
+  description?: string;
+  tags?: string[];
+  priority?: TaskPriority;
+  status?: TaskStatus;
+  assigned_worker_id?: string | null;
+}
+
+export async function listTasks(rigId: string): Promise<TaskItem[]> {
+  return invoke<TaskItem[]>("list_tasks", { rigId });
+}
+
+export async function createTask(
+  rigId: string, title: string, description: string, tags: string[], priority: TaskPriority
+): Promise<TaskItem> {
+  return invoke<TaskItem>("create_task", { rigId, title, description, tags, priority });
+}
+
+export async function updateTask(id: string, updates: TaskUpdate): Promise<TaskItem> {
+  return invoke<TaskItem>("update_task", { id, updates });
+}
+
+export async function deleteTask(id: string): Promise<void> {
+  return invoke<void>("delete_task", { id });
+}
+
+export async function executeTask(
+  taskId: string, crewId: string, agentType: string, templateName: string
+): Promise<RunInfo> {
+  return invoke<RunInfo>("execute_task", { taskId, crewId, agentType, templateName });
+}
+
+// ── Worker types ──
+
+export type WorkerStatus = "running" | "stopped" | "failed" | "completed";
+
+export interface WorkerInfo {
+  id: string;
+  rig_id: string;
+  crew_id: string;
+  agent_type: string;
+  status: WorkerStatus;
+  pid: number | null;
+  started_at: string;
+  stopped_at: string | null;
+}
+
+export interface LogEntry {
+  timestamp: string;
+  stream: "stdout" | "stderr";
+  line: string;
+}
+
+export async function spawnWorker(crewId: string, agentType: string, initialPrompt: string): Promise<WorkerInfo> {
+  return invoke<WorkerInfo>("spawn_worker", { crewId, agentType, initialPrompt });
+}
+
+export async function stopWorker(id: string): Promise<void> {
+  return invoke<void>("stop_worker", { id });
+}
+
+export async function getWorkerStatus(id: string): Promise<WorkerInfo> {
+  return invoke<WorkerInfo>("get_worker_status", { id });
+}
+
+export async function listWorkers(rigId: string): Promise<WorkerInfo[]> {
+  return invoke<WorkerInfo[]>("list_workers", { rigId });
+}
+
+export async function getWorkerLogs(id: string): Promise<LogEntry[]> {
+  return invoke<LogEntry[]>("get_worker_logs", { id });
+}
+
+// ── Run types ──
+
+export type RunStatus = "running" | "completed" | "failed" | "cancelled";
+
+export interface RunInfo {
+  id: string;
+  task_id: string;
+  worker_id: string;
+  crew_id: string;
+  rig_id: string;
+  agent_type: string;
+  template_name: string;
+  rendered_prompt: string;
+  status: RunStatus;
+  started_at: string;
+  finished_at: string | null;
+  exit_code: number | null;
+  diff_stats: string | null;
+}
+
+export async function listRuns(rigId: string): Promise<RunInfo[]> {
+  return invoke<RunInfo[]>("list_runs", { rigId });
+}
+
+export async function getRun(id: string): Promise<RunInfo> {
+  return invoke<RunInfo>("get_run", { id });
+}
+
+export async function getRunLogs(id: string): Promise<LogEntry[]> {
+  return invoke<LogEntry[]>("get_run_logs", { id });
+}
+
+// ── Template types ──
+
+export interface TemplateInfo {
+  name: string;
+  description: string;
+  content: string;
+  is_builtin: boolean;
+}
+
+export async function listTemplates(): Promise<TemplateInfo[]> {
+  return invoke<TemplateInfo[]>("list_templates");
+}
+
+export async function renderTemplate(name: string, vars: Record<string, string>): Promise<string> {
+  return invoke<string>("render_template", { name, vars });
+}
+
+// ── Settings types ──
+
+export interface AppSettings {
+  cli_paths: Record<string, string>;
+  env_vars: Record<string, string>;
+  default_template: string;
+}
+
+export async function getSettings(): Promise<AppSettings> {
+  return invoke<AppSettings>("get_settings");
+}
+
+export async function updateSettings(settings: AppSettings): Promise<void> {
+  return invoke<void>("update_settings", { settings });
+}
+
+export async function validateCliPath(path: string): Promise<string> {
+  return invoke<string>("validate_cli_path", { path });
 }

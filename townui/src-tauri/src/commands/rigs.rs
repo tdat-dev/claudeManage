@@ -67,11 +67,18 @@ pub fn get_rig(id: String, state: State<AppState>) -> Result<RigInfo, String> {
 
     // Update last_opened
     rig.last_opened = chrono::Utc::now().to_rfc3339();
+    let path = rig.path.clone();
+
     state.save_rigs(&rigs);
 
-    let is_git = git::is_git_repo(&rig.path);
-    let branch = if is_git { git::get_current_branch(&rig.path) } else { None };
-    let status = if is_git { git::get_short_status(&rig.path) } else { None };
+    let is_git = git::is_git_repo(&path);
+    let branch = if is_git { git::get_current_branch(&path) } else { None };
+    let status = if is_git { git::get_short_status(&path) } else { None };
+
+    let rig = rigs
+        .iter()
+        .find(|r| r.id == id)
+        .ok_or_else(|| "Rig not found".to_string())?;
 
     Ok(rig.to_info(branch, status, is_git))
 }
