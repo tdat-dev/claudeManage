@@ -178,6 +178,17 @@ fn strip_ansi_escapes(input: &str) -> String {
     out
 }
 
+/// Prepare prompt text to be passed as a single shell argument.
+/// PTY input is line-oriented, so embedded newlines would split the command.
+fn sanitize_prompt_for_shell(prompt: &str) -> String {
+    prompt
+        .replace('\r', " ")
+        .replace('\n', " ")
+        .replace('"', "\\\"")
+        .trim()
+        .to_string()
+}
+
 // ── Core spawn logic (via PTY so CLIs see a real terminal) ──
 
 fn spawn_worker_inner(
@@ -250,32 +261,40 @@ fn spawn_worker_inner(
 
 
     // Build the full command string to send into the interactive shell
+    let prompt_for_shell = sanitize_prompt_for_shell(&initial_prompt);
     let agent_command = match agent_type.as_str() {
-        "claude" => format!("{} --print \"{}\"", cli_path, initial_prompt.replace('"', "\\\"")),
+        "claude" => format!("{} --print \"{}\"", cli_path, prompt_for_shell),
         "codex" => {
-            if initial_prompt.is_empty() { format!("{} exec --full-auto", cli_path) }
-            else { format!("{} exec --full-auto \"{}\"", cli_path, initial_prompt.replace('"', "\\\"")) }
+            if initial_prompt.is_empty() {
+                cli_path.clone()
+            } else {
+                // Run one-shot task first, then keep the session inside Codex interactive CLI.
+                format!(
+                    "{} exec --full-auto -c model_reasoning_effort=low \"{}\" && {}",
+                    cli_path, prompt_for_shell, cli_path
+                )
+            }
         }
         "chatgpt" | "gemini" | "mentat" | "gpt-engineer" | "continue"
         | "trae" | "pear" | "void" | "tabnine" | "supermaven"
         | "codestory" | "double" | "cursor" | "windsurf" | "bolt" => {
             if initial_prompt.is_empty() { cli_path.clone() }
-            else { format!("{} --prompt \"{}\"", cli_path, initial_prompt.replace('"', "\\\"")) }
+            else { format!("{} --prompt \"{}\"", cli_path, prompt_for_shell) }
         }
-        "copilot" => format!("{} copilot suggest \"{}\"", cli_path, initial_prompt.replace('"', "\\\"")),
-        "amazon-q" => format!("{} chat \"{}\"", cli_path, initial_prompt.replace('"', "\\\"")),
-        "aider" => format!("{} --message \"{}\" --yes-always --no-git", cli_path, initial_prompt.replace('"', "\\\"")),
-        "goose" => format!("{} session --message \"{}\"", cli_path, initial_prompt.replace('"', "\\\"")),
-        "openhands" | "swe-agent" => format!("{} run --task \"{}\"", cli_path, initial_prompt.replace('"', "\\\"")),
-        "cline" | "augment" | "roo" => format!("{} --message \"{}\"", cli_path, initial_prompt.replace('"', "\\\"")),
-        "tabby" | "cody" => format!("{} chat --message \"{}\"", cli_path, initial_prompt.replace('"', "\\\"")),
-        "sweep" => format!("{} run \"{}\"", cli_path, initial_prompt.replace('"', "\\\"")),
-        "auto-coder" => format!("{} --task \"{}\"", cli_path, initial_prompt.replace('"', "\\\"")),
-        "devin" => format!("{} run --task \"{}\"", cli_path, initial_prompt.replace('"', "\\\"")),
-        "replit" => format!("{} agent --task \"{}\"", cli_path, initial_prompt.replace('"', "\\\"")),
+        "copilot" => format!("{} copilot suggest \"{}\"", cli_path, prompt_for_shell),
+        "amazon-q" => format!("{} chat \"{}\"", cli_path, prompt_for_shell),
+        "aider" => format!("{} --message \"{}\" --yes-always --no-git", cli_path, prompt_for_shell),
+        "goose" => format!("{} session --message \"{}\"", cli_path, prompt_for_shell),
+        "openhands" | "swe-agent" => format!("{} run --task \"{}\"", cli_path, prompt_for_shell),
+        "cline" | "augment" | "roo" => format!("{} --message \"{}\"", cli_path, prompt_for_shell),
+        "tabby" | "cody" => format!("{} chat --message \"{}\"", cli_path, prompt_for_shell),
+        "sweep" => format!("{} run \"{}\"", cli_path, prompt_for_shell),
+        "auto-coder" => format!("{} --task \"{}\"", cli_path, prompt_for_shell),
+        "devin" => format!("{} run --task \"{}\"", cli_path, prompt_for_shell),
+        "replit" => format!("{} agent --task \"{}\"", cli_path, prompt_for_shell),
         _ => {
             if initial_prompt.is_empty() { cli_path.clone() }
-            else { format!("{} \"{}\"", cli_path, initial_prompt.replace('"', "\\\"")) }
+            else { format!("{} \"{}\"", cli_path, prompt_for_shell) }
         }
     };
 
