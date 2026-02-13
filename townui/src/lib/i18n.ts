@@ -7,11 +7,15 @@ const en: Dict = {
   language_help: "Choose display language for guidance text",
   hook_inbox: "Hook Inbox",
   handoff_center: "Handoff Center",
-  terms_title: "Hook / Sling / Handoff quick guide",
-  terms_hook: "Hook: a persistent actor lane that can keep context.",
-  terms_sling: "Sling: assign + start work immediately on a hook.",
-  terms_handoff: "Handoff: transfer work context from one actor to another.",
-  terms_done: "Done: close work on hook and write outcome back to task.",
+  terms_title: "How task assignment works",
+  terms_hook:
+    "Hook — think of it as an agent's personal to-do slot. It remembers what the agent was working on, even after a restart.",
+  terms_sling:
+    "Sling — drop a task into an agent's slot and start it right away. One click = assign + go.",
+  terms_handoff:
+    "Handoff — when one agent gets stuck or finishes their part, they pass the task (with notes) to another agent to continue.",
+  terms_done:
+    "Done — the agent marks the task as finished and writes down what it accomplished.",
   sling: "Sling",
   new_handoff: "New Handoff",
   worker_quick_actions: "Worker Quick Actions",
@@ -24,12 +28,14 @@ const vi: Dict = {
   language_help: "Chọn ngôn ngữ hiển thị cho phần hướng dẫn",
   hook_inbox: "Hộp Hook",
   handoff_center: "Trung tâm Handoff",
-  terms_title: "Giải thích nhanh Hook / Sling / Handoff",
-  terms_hook: "Hook: là một lane actor bền vững để giữ ngữ cảnh làm việc.",
-  terms_sling: "Sling: vừa gán việc vừa chạy ngay trên hook.",
+  terms_title: "Cách giao việc hoạt động",
+  terms_hook:
+    "Hook — coi như ô việc riêng của mỗi agent. Nó nhớ agent đang làm gì, kể cả khi tắt mở lại app.",
+  terms_sling:
+    "Sling — ném việc vào ô của agent rồi chạy luôn. Một click = giao + bắt đầu.",
   terms_handoff:
-    "Handoff: chuyển giao ngữ cảnh công việc từ actor này sang actor khác.",
-  terms_done: "Done: kết thúc việc trên hook và ghi kết quả về task.",
+    "Handoff — khi agent bị kẹt hoặc làm xong phần mình, nó chuyển việc (kèm ghi chú) cho agent khác làm tiếp.",
+  terms_done: "Done — agent đánh dấu xong việc và ghi lại kết quả.",
   sling: "Sling",
   new_handoff: "Tạo Handoff",
   worker_quick_actions: "Tác vụ nhanh Worker",

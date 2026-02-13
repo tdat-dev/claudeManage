@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::models::audit::{AuditEvent, AuditEventType};
 use crate::models::hook::{Hook, HookStatus};
@@ -216,7 +216,7 @@ pub fn done(hook_id: String, outcome: Option<String>, state: State<AppState>) ->
 }
 
 #[tauri::command]
-pub fn resume_hook(hook_id: String, state: State<AppState>) -> Result<Hook, String> {
+pub fn resume_hook(hook_id: String, state: State<AppState>, app: AppHandle) -> Result<Hook, String> {
     let mut hooks = state.hooks.lock().unwrap();
     let hook = hooks
         .iter_mut()
@@ -231,11 +231,37 @@ pub fn resume_hook(hook_id: String, state: State<AppState>) -> Result<Hook, Stri
     hook.last_heartbeat = chrono::Utc::now().to_rfc3339();
     let updated = hook.clone();
     state.save_hooks(&hooks);
+    drop(hooks);
 
+    // Build a resume prompt from state_blob
+    let resume_prompt = if let Some(ref blob) = updated.state_blob {
+        format!(
+            "[RESUME] Continuing interrupted work. Previous state:\n{}\n\nPlease continue where you left off.",
+            blob
+        )
+    } else {
+        "[RESUME] Continuing interrupted work. No previous state available. Please check the current project state and continue.".to_string()
+    };
+
+    // Find a crew in the same rig to spawn a worker in
+    let crew_id = {
+        let crews = state.crews.lock().unwrap();
+        crews
+            .iter()
+            .find(|c| c.rig_id == updated.rig_id && c.status == crate::models::crew::CrewStatus::Active)
+            .map(|c| c.id.clone())
+            .ok_or_else(|| "No active crew found in this rig to resume work".to_string())?
+    };
+
+    // Use the actor_id as agent_type for the spawned worker
+    let agent_type = updated.attached_actor_id.clone();
+
+    // Audit: hook resumed
     let payload = serde_json::json!({
         "hook_id": updated.hook_id,
         "work_item_id": updated.current_work_id,
         "has_state_blob": updated.state_blob.is_some(),
+        "spawning_worker": true,
     })
     .to_string();
     state.append_audit_event(&AuditEvent::new(
@@ -246,5 +272,39 @@ pub fn resume_hook(hook_id: String, state: State<AppState>) -> Result<Hook, Stri
         payload,
     ));
 
-    Ok(updated)
+    // Spawn a worker to continue the work
+    match super::workers::spawn_worker(crew_id, agent_type, resume_prompt, app) {
+        Ok(worker) => {
+            // Link the worker to the hook's current work item if any
+            if let Some(ref task_id) = updated.current_work_id {
+                let mut tasks = state.tasks.lock().unwrap();
+                if let Some(task) = tasks.iter_mut().find(|t| t.id == *task_id) {
+                    task.apply_update(TaskUpdateRequest {
+                        title: None,
+                        description: None,
+                        tags: None,
+                        priority: None,
+                        status: Some(TaskStatus::InProgress),
+                        assigned_worker_id: Some(Some(worker.id.clone())),
+                        acceptance_criteria: None,
+                        dependencies: None,
+                        owner_actor_id: None,
+                        convoy_id: None,
+                        hook_id: Some(Some(updated.hook_id.clone())),
+                        blocked_reason: Some(None),
+                        outcome: None,
+                    });
+                    state.save_tasks(&tasks);
+                }
+            }
+            // Return the updated hook
+            let hooks = state.hooks.lock().unwrap();
+            hooks
+                .iter()
+                .find(|h| h.hook_id == updated.hook_id)
+                .cloned()
+                .ok_or_else(|| "Hook not found after resume".to_string())
+        }
+        Err(e) => Err(format!("Resume hook: failed to spawn worker: {}", e)),
+    }
 }

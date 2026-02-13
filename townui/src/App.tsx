@@ -10,6 +10,7 @@ import RunHistory from "./components/RunHistory";
 import TerminalTabs from "./components/TerminalTabs";
 import SettingsPage from "./components/SettingsPage";
 import AuditTimeline from "./components/AuditTimeline";
+import ConvoyBoard from "./components/ConvoyBoard";
 import HookInbox from "./components/HookInbox";
 import HandoffCenter from "./components/HandoffCenter";
 import { useRigs } from "./hooks/useRigs";
@@ -187,91 +188,110 @@ export default function App() {
           );
         }
         return (
-          <div className="space-y-4 p-4">
-            <div className="glass-card p-4">
-              <h3 className="text-sm font-semibold mb-2">
-                {t(language, "terms_title")}
-              </h3>
-              <ul className="text-xs text-town-text-muted space-y-1.5">
-                <li>• {t(language, "terms_hook")}</li>
-                <li>• {t(language, "terms_sling")}</li>
-                <li>• {t(language, "terms_handoff")}</li>
-                <li>• {t(language, "terms_done")}</li>
-              </ul>
-            </div>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              <HookInbox
-                language={language}
-                hooks={hooks}
-                tasks={tasks}
-                loading={hooksLoading}
-                onCreateHook={async (actorId) => {
-                  await addHook(actorId);
-                }}
-                onAssign={async (hookId, taskId) => {
-                  await assign(hookId, taskId);
-                }}
-                onSling={async (hookId, taskId) => {
-                  await slingNow(hookId, taskId);
-                }}
-                onDone={async (hookId, outcome) => {
-                  await done(hookId, outcome);
-                }}
-                onResume={async (hookId) => {
-                  await resume(hookId);
-                }}
-              />
-              <HandoffCenter
-                language={language}
-                handoffs={handoffs}
-                tasks={tasks}
-                loading={handoffsLoading}
-                onCreate={async (
-                  fromActorId,
-                  toActorId,
-                  workItemId,
-                  contextSummary,
-                  blockers,
-                  nextSteps,
-                ) => {
-                  await addHandoff(
+          <div className="flex flex-col h-full">
+            {/* Terms & Hook/Handoff row */}
+            <div className="shrink-0 space-y-3 px-4 pt-4 pb-2">
+              <div className="glass-card p-3">
+                <details className="group">
+                  <summary className="text-xs font-semibold cursor-pointer list-none flex items-center gap-2">
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      className="text-town-text-faint group-open:rotate-90 transition-transform"
+                    >
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                    {t(language, "terms_title")}
+                  </summary>
+                  <ul className="text-xs text-town-text-muted space-y-1 mt-2 ml-5">
+                    <li>• {t(language, "terms_hook")}</li>
+                    <li>• {t(language, "terms_sling")}</li>
+                    <li>• {t(language, "terms_handoff")}</li>
+                    <li>• {t(language, "terms_done")}</li>
+                  </ul>
+                </details>
+              </div>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                <HookInbox
+                  language={language}
+                  hooks={hooks}
+                  tasks={tasks}
+                  loading={hooksLoading}
+                  onCreateHook={async (actorId) => {
+                    await addHook(actorId);
+                  }}
+                  onAssign={async (hookId, taskId) => {
+                    await assign(hookId, taskId);
+                  }}
+                  onSling={async (hookId, taskId) => {
+                    await slingNow(hookId, taskId);
+                  }}
+                  onDone={async (hookId, outcome) => {
+                    await done(hookId, outcome);
+                  }}
+                  onResume={async (hookId) => {
+                    await resume(hookId);
+                  }}
+                />
+                <HandoffCenter
+                  language={language}
+                  handoffs={handoffs}
+                  tasks={tasks}
+                  loading={handoffsLoading}
+                  onCreate={async (
                     fromActorId,
                     toActorId,
                     workItemId,
                     contextSummary,
                     blockers,
                     nextSteps,
-                  );
-                }}
-                onAccept={async (handoffId, acceptedByActorId) => {
-                  await accept(handoffId, acceptedByActorId);
+                  ) => {
+                    await addHandoff(
+                      fromActorId,
+                      toActorId,
+                      workItemId,
+                      contextSummary,
+                      blockers,
+                      nextSteps,
+                    );
+                  }}
+                  onAccept={async (handoffId, acceptedByActorId) => {
+                    await accept(handoffId, acceptedByActorId);
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Kanban board fills remaining space */}
+            <div className="flex-1 min-h-0">
+              <TaskBoard
+                language={language}
+                tasks={tasks}
+                loading={tasksLoading}
+                onCreateClick={() => setShowTaskCreate(true)}
+                onEdit={editTask}
+                onDelete={removeTask}
+                onExecute={(task) => setExecuteTarget(task)}
+                onSling={async (taskId) => {
+                  if (hooks.length === 0) {
+                    alert("Create a hook first in Hook Inbox");
+                    return;
+                  }
+                  const defaultHookId = hooks[0].hook_id;
+                  const selectedHookId =
+                    prompt(
+                      `Hook ID to sling (default ${defaultHookId.slice(0, 8)}...)`,
+                      defaultHookId,
+                    ) || "";
+                  if (!selectedHookId) return;
+                  await slingNow(selectedHookId, taskId);
                 }}
               />
             </div>
-
-            <TaskBoard
-              language={language}
-              tasks={tasks}
-              loading={tasksLoading}
-              onCreateClick={() => setShowTaskCreate(true)}
-              onEdit={editTask}
-              onDelete={removeTask}
-              onExecute={(task) => setExecuteTarget(task)}
-              onSling={async (taskId) => {
-                if (hooks.length === 0) {
-                  alert("Create a hook first in Hook Inbox");
-                  return;
-                }
-                const defaultHookId = hooks[0].hook_id;
-                const selectedHookId =
-                  prompt(
-                    `Hook ID to sling (default ${defaultHookId.slice(0, 8)}...)`,
-                    defaultHookId,
-                  ) || "";
-                if (!selectedHookId) return;
-                await slingNow(selectedHookId, taskId);
-              }}
-            />
           </div>
         );
 
@@ -280,6 +300,11 @@ export default function App() {
 
       case "runs":
         return <RunHistory rigId={selectedRig?.id ?? null} />;
+
+      case "convoys":
+        return (
+          <ConvoyBoard rigs={rigs} selectedRigId={selectedRig?.id ?? null} />
+        );
 
       case "audit":
         if (!selectedRig) {

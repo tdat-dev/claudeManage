@@ -106,16 +106,21 @@ impl Task {
         if let Some(priority) = update.priority {
             self.priority = priority;
         }
-        if let Some(status) = update.status {
-            // Auto-set completed_at when transitioning to Done
-            if status == TaskStatus::Done && self.status != TaskStatus::Done {
-                self.completed_at = Some(chrono::Utc::now().to_rfc3339());
+        if let Some(ref status) = update.status {
+            // Transition guard: validate allowed transitions
+            let allowed = self.allowed_transitions();
+            if allowed.contains(status) || *status == self.status {
+                // Auto-set completed_at when transitioning to Done
+                if *status == TaskStatus::Done && self.status != TaskStatus::Done {
+                    self.completed_at = Some(chrono::Utc::now().to_rfc3339());
+                }
+                // Clear completed_at if moving away from Done
+                if *status != TaskStatus::Done {
+                    self.completed_at = None;
+                }
+                self.status = status.clone();
             }
-            // Clear completed_at if moving away from Done
-            if status != TaskStatus::Done {
-                self.completed_at = None;
-            }
-            self.status = status;
+            // If transition not allowed, silently ignore (caller can check result)
         }
         if let Some(assigned_worker_id) = update.assigned_worker_id {
             self.assigned_worker_id = assigned_worker_id;
@@ -142,5 +147,41 @@ impl Task {
             self.outcome = outcome;
         }
         self.updated_at = chrono::Utc::now().to_rfc3339();
+    }
+
+    /// Returns the set of statuses this task can transition to from its current status.
+    pub fn allowed_transitions(&self) -> Vec<TaskStatus> {
+        match self.status {
+            TaskStatus::Todo => vec![
+                TaskStatus::InProgress,
+                TaskStatus::Cancelled,
+            ],
+            TaskStatus::InProgress => vec![
+                TaskStatus::Done,
+                TaskStatus::Blocked,
+                TaskStatus::Deferred,
+                TaskStatus::Escalated,
+                TaskStatus::Cancelled,
+            ],
+            TaskStatus::Blocked => vec![
+                TaskStatus::InProgress,
+                TaskStatus::Cancelled,
+            ],
+            TaskStatus::Deferred => vec![
+                TaskStatus::Todo,
+                TaskStatus::InProgress,
+                TaskStatus::Cancelled,
+            ],
+            TaskStatus::Escalated => vec![
+                TaskStatus::InProgress,
+                TaskStatus::Cancelled,
+            ],
+            TaskStatus::Done => vec![
+                TaskStatus::Todo, // reopen
+            ],
+            TaskStatus::Cancelled => vec![
+                TaskStatus::Todo, // reopen
+            ],
+        }
     }
 }

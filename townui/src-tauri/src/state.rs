@@ -4,7 +4,15 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+/// A thread-safe writer handle for sending input to a running worker's stdin/PTY.
+pub type WorkerWriter = Box<dyn Write + Send>;
+
+/// A handle to the PTY master, kept alive so the PTY stays open and can be resized.
+pub type PtyMasterHandle = Box<dyn portable_pty::MasterPty + Send>;
+
+use crate::models::actor::Actor;
 use crate::models::audit::AuditEvent;
+use crate::models::convoy::Convoy;
 use crate::models::crew::Crew;
 use crate::models::handoff::Handoff;
 use crate::models::hook::Hook;
@@ -19,9 +27,13 @@ pub struct AppState {
     pub tasks: Mutex<Vec<Task>>,
     pub hooks: Mutex<Vec<Hook>>,
     pub handoffs: Mutex<Vec<Handoff>>,
+    pub convoys: Mutex<Vec<Convoy>>,
+    pub actors: Mutex<Vec<Actor>>,
     pub workers: Mutex<Vec<Worker>>,
     pub runs: Mutex<Vec<Run>>,
     pub worker_logs: Mutex<HashMap<String, Vec<LogEntry>>>,
+    pub worker_writers: Mutex<HashMap<String, WorkerWriter>>,
+    pub worker_pty_masters: Mutex<HashMap<String, PtyMasterHandle>>,
     pub settings: Mutex<AppSettings>,
     pub town_dir: PathBuf,
 }
@@ -42,6 +54,8 @@ impl AppState {
         let tasks: Vec<Task> = Self::load_json_vec(&town_dir, "tasks.json");
         let hooks: Vec<Hook> = Self::load_json_vec(&town_dir, "hooks.json");
         let handoffs: Vec<Handoff> = Self::load_json_vec(&town_dir, "handoffs.json");
+        let convoys: Vec<Convoy> = Self::load_json_vec(&town_dir, "convoys.json");
+        let actors: Vec<Actor> = Self::load_json_vec(&town_dir, "actors.json");
         let workers: Vec<Worker> = Self::load_json_vec(&town_dir, "workers.json");
         let runs: Vec<Run> = Self::load_json_vec(&town_dir, "runs.json");
 
@@ -53,9 +67,13 @@ impl AppState {
             tasks: Mutex::new(tasks),
             hooks: Mutex::new(hooks),
             handoffs: Mutex::new(handoffs),
+            convoys: Mutex::new(convoys),
+            actors: Mutex::new(actors),
             workers: Mutex::new(workers),
             runs: Mutex::new(runs),
             worker_logs: Mutex::new(HashMap::new()),
+            worker_writers: Mutex::new(HashMap::new()),
+            worker_pty_masters: Mutex::new(HashMap::new()),
             settings: Mutex::new(settings),
             town_dir,
         }
@@ -105,6 +123,14 @@ impl AppState {
 
     pub fn save_handoffs(&self, handoffs: &[Handoff]) {
         self.save_json(handoffs, "handoffs.json");
+    }
+
+    pub fn save_convoys(&self, convoys: &[Convoy]) {
+        self.save_json(convoys, "convoys.json");
+    }
+
+    pub fn save_actors(&self, actors: &[Actor]) {
+        self.save_json(actors, "actors.json");
     }
 
     pub fn save_workers(&self, workers: &[Worker]) {

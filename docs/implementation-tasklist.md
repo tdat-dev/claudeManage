@@ -25,7 +25,7 @@
 - [x] Thêm `Blocked` vào `TaskStatus` enum
 - [x] Thêm `Deferred` vào `TaskStatus` enum
 - [x] Thêm `Escalated` vào `TaskStatus` enum
-- [ ] Thêm transition guard: `InProgress` → chỉ cho `Done/Blocked/Deferred/Escalated/Cancelled`
+- [x] Thêm transition guard: `InProgress` → chỉ cho `Done/Blocked/Deferred/Escalated/Cancelled`
 - [x] Thêm field `blocked_reason: Option<String>` vào `Task`
 
 ### 1.3 Frontend TaskBoard cập nhật
@@ -42,7 +42,7 @@
 - [x] Tạo `commands/audit.rs` với `list_events(rig_id)`, `get_events_for_task(task_id)`
 - [x] Thêm vào `lib.rs` invoke handler
 - [x] Ghi audit event khi: task created/updated/status changed/deleted
-- [ ] Ghi audit event khi: worker spawned/stopped/failed/completed
+- [x] Ghi audit event khi: worker spawned/stopped/failed/completed
 - [x] Lưu events append-only vào file `{data}/audit_events.jsonl`
 
 ### 1.5 Audit Event Log (Frontend)
@@ -90,7 +90,7 @@
 
 ### 2.5 Resume API
 
-- [ ] Backend: `resume_hook(hook_id)` — tải state_blob + spawn worker tiếp tục
+- [x] Backend: `resume_hook(hook_id)` — tải state_blob + spawn worker tiếp tục
 - [x] Frontend: nút "Resume" trên HookInbox cho hook đã bị interrupt
 - [x] Ghi audit event khi resume
 
@@ -100,26 +100,26 @@
 
 ### 3.1 Convoy model (Backend)
 
-- [ ] Tạo model `Convoy` (`convoy_id`, `title`, `description`, `status`, `rig_ids: Vec<String>`, `work_item_ids: Vec<String>`, `created_at`, `updated_at`, `completed_at`)
-- [ ] Tạo `models/convoy.rs` + thêm vào `models/mod.rs`
-- [ ] Tạo `commands/convoys.rs` — `create_convoy`, `add_item_to_convoy`, `get_convoy`, `list_convoys`, `update_convoy_status`
-- [ ] Thêm vào `lib.rs` invoke handler
-- [ ] Convoy persistence trong `state.rs`
-- [ ] Ghi audit event khi convoy created/updated/completed
+- [x] Tạo model `Convoy` (`convoy_id`, `title`, `description`, `status`, `rig_ids: Vec<String>`, `work_item_ids: Vec<String>`, `created_at`, `updated_at`, `completed_at`)
+- [x] Tạo `models/convoy.rs` + thêm vào `models/mod.rs`
+- [x] Tạo `commands/convoys.rs` — `create_convoy`, `add_item_to_convoy`, `get_convoy`, `list_convoys`, `update_convoy_status`
+- [x] Thêm vào `lib.rs` invoke handler
+- [x] Convoy persistence trong `state.rs`
+- [x] Ghi audit event khi convoy created/updated/completed
 
 ### 3.2 Convoy (Frontend)
 
-- [ ] Thêm types `ConvoyInfo` trong `lib/tauri.ts`
-- [ ] Thêm hook `useConvoys.ts`
-- [ ] Thêm component `ConvoyBoard.tsx` — board view multi-task progress
-- [ ] Thêm nav entry "Convoys" vào `Layout.tsx`
-- [ ] Hiển thị convoy progress (% done, blocked items, cross-rig view)
+- [x] Thêm types `ConvoyInfo` trong `lib/tauri.ts`
+- [x] Thêm hook `useConvoys.ts`
+- [x] Thêm component `ConvoyBoard.tsx` — board view multi-task progress
+- [x] Thêm nav entry "Convoys" vào `Layout.tsx`
+- [x] Hiển thị convoy progress (% done, blocked items, cross-rig view)
 
 ### 3.3 Actor/Identity model
 
-- [ ] Tạo model `Actor` (`actor_id`, `name`, `role`, `agent_type`, `rig_id`, `created_at`)
-- [ ] Tạo `models/actor.rs` + thêm vào `models/mod.rs`
-- [ ] Liên kết Worker → Actor (actor_id ổn định, worker session tạm thời)
+- [x] Tạo model `Actor` (`actor_id`, `name`, `role`, `agent_type`, `rig_id`, `created_at`)
+- [x] Tạo `models/actor.rs` + thêm vào `models/mod.rs`
+- [x] Liên kết Worker → Actor (actor_id ổn định, worker session tạm thời)
 - [ ] Hiển thị actor identity trong WorkerPanel/TerminalTabs
 
 ---
@@ -175,8 +175,8 @@
 - [x] Codex CLI: `os error 193` → ưu tiên `.cmd/.exe` extension
 - [x] Worker fail log: thêm exit code vào log output khi process thất bại
 - [ ] Codex CLI: chưa test end-to-end sau resolver fix (cần verify)
-- [ ] `worker-status` event emit `Debug` format ("Completed") vs frontend lowercase enum ("completed") — potential mismatch
-- [ ] Cleanup: gỡ PowerShell wrapper branch trong `spawn_worker_inner` (đã thay bằng non-PTY path)
+- [x] `worker-status` event emit `Debug` format ("Completed") vs frontend lowercase enum ("completed") — potential mismatch
+- [x] Cleanup: gỡ PowerShell wrapper branch trong `spawn_worker_inner` (đã thay bằng non-PTY path)
 
 ---
 
@@ -184,7 +184,7 @@
 
 - [x] Task tồn tại độc lập với session runtime (JSON persistence)
 - [ ] Handoff có format chuẩn + machine-readable
-- [ ] Có convoy/group để nhìn tiến độ mục tiêu lớn
-- [ ] Có khả năng resume task sau restart
+- [x] Có convoy/group để nhìn tiến độ mục tiêu lớn
+- [x] Có khả năng resume task sau restart
 - [x] Có audit trail đầy đủ cho mọi thay đổi trạng thái
 - [ ] Có cơ chế phát hiện stuck tasks tự động

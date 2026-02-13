@@ -5,6 +5,7 @@ export type NavPage =
   | "tasks"
   | "workers"
   | "runs"
+  | "convoys"
   | "audit"
   | "settings";
 
@@ -89,6 +90,27 @@ const navItems: { label: string; page: NavPage; icon: JSX.Element }[] = [
       >
         <circle cx="12" cy="12" r="10" />
         <polyline points="12 6 12 12 16 14" />
+      </svg>
+    ),
+  },
+  {
+    label: "Convoys",
+    page: "convoys",
+    icon: (
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="1" y="3" width="15" height="13" rx="2" ry="2" />
+        <path d="M16 8h4l3 4v5h-7V8z" />
+        <circle cx="5.5" cy="18.5" r="2.5" />
+        <circle cx="18.5" cy="18.5" r="2.5" />
       </svg>
     ),
   },

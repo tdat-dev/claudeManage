@@ -1,4 +1,6 @@
+pub mod actors;
 pub mod audit;
+pub mod convoys;
 pub mod crews;
 pub mod handoffs;
 pub mod hooks;

@@ -39,6 +39,17 @@ pub fn run() {
             commands::handoffs::list_handoffs,
             commands::handoffs::create_handoff,
             commands::handoffs::accept_handoff,
+            // Convoys
+            commands::convoys::list_convoys,
+            commands::convoys::get_convoy,
+            commands::convoys::create_convoy,
+            commands::convoys::add_item_to_convoy,
+            commands::convoys::update_convoy_status,
+            // Actors
+            commands::actors::list_actors,
+            commands::actors::create_actor,
+            commands::actors::get_actor,
+            commands::actors::delete_actor,
             // Workers & Runs
             commands::workers::spawn_worker,
             commands::workers::stop_worker,
@@ -51,6 +62,8 @@ pub fn run() {
             commands::workers::get_run,
             commands::workers::get_run_logs,
             commands::workers::open_in_explorer,
+            commands::workers::write_to_worker,
+            commands::workers::resize_worker_pty,
             // Templates
             commands::templates::list_templates,
             commands::templates::render_template,

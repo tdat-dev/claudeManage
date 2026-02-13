@@ -264,6 +264,89 @@ export async function acceptHandoff(
   });
 }
 
+// ── Convoy types ──
+
+export type ConvoyStatus =
+  | "planning"
+  | "active"
+  | "blocked"
+  | "completed"
+  | "cancelled";
+
+export interface ConvoyInfo {
+  convoy_id: string;
+  title: string;
+  description: string;
+  status: ConvoyStatus;
+  rig_ids: string[];
+  work_item_ids: string[];
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+export async function listConvoys(): Promise<ConvoyInfo[]> {
+  return invoke<ConvoyInfo[]>("list_convoys");
+}
+
+export async function getConvoy(convoyId: string): Promise<ConvoyInfo> {
+  return invoke<ConvoyInfo>("get_convoy", { convoyId });
+}
+
+export async function createConvoy(
+  title: string,
+  description: string,
+  rigIds: string[],
+): Promise<ConvoyInfo> {
+  return invoke<ConvoyInfo>("create_convoy", { title, description, rigIds });
+}
+
+export async function addItemToConvoy(
+  convoyId: string,
+  workItemId: string,
+): Promise<ConvoyInfo> {
+  return invoke<ConvoyInfo>("add_item_to_convoy", { convoyId, workItemId });
+}
+
+export async function updateConvoyStatus(
+  convoyId: string,
+  status: ConvoyStatus,
+): Promise<ConvoyInfo> {
+  return invoke<ConvoyInfo>("update_convoy_status", { convoyId, status });
+}
+
+// ── Actor types ──
+
+export interface ActorInfo {
+  actor_id: string;
+  name: string;
+  role: string;
+  agent_type: string;
+  rig_id: string;
+  created_at: string;
+}
+
+export async function listActors(rigId: string): Promise<ActorInfo[]> {
+  return invoke<ActorInfo[]>("list_actors", { rigId });
+}
+
+export async function createActor(
+  name: string,
+  role: string,
+  agentType: string,
+  rigId: string,
+): Promise<ActorInfo> {
+  return invoke<ActorInfo>("create_actor", { name, role, agentType, rigId });
+}
+
+export async function getActor(actorId: string): Promise<ActorInfo> {
+  return invoke<ActorInfo>("get_actor", { actorId });
+}
+
+export async function deleteActor(actorId: string): Promise<void> {
+  return invoke<void>("delete_actor", { actorId });
+}
+
 export async function executeTask(
   taskId: string,
   crewId: string,
@@ -287,6 +370,7 @@ export interface WorkerInfo {
   rig_id: string;
   crew_id: string;
   agent_type: string;
+  actor_id: string | null;
   status: WorkerStatus;
   pid: number | null;
   started_at: string;
@@ -331,6 +415,16 @@ export async function getWorkerLogs(id: string): Promise<LogEntry[]> {
   return invoke<LogEntry[]>("get_worker_logs", { id });
 }
 
+export async function writeToWorker(id: string, input: string): Promise<void> {
+  return invoke<void>("write_to_worker", { id, input });
+}
+export async function resizeWorkerPty(
+  id: string,
+  rows: number,
+  cols: number,
+): Promise<void> {
+  return invoke("resize_worker_pty", { id, rows, cols });
+}
 // ── Run types ──
 
 export type RunStatus = "running" | "completed" | "failed" | "cancelled";

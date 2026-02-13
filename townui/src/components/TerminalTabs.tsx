@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useWorkers } from "../hooks/useWorkers";
 import { useCrews } from "../hooks/useCrews";
@@ -8,6 +8,7 @@ import { useHandoffs } from "../hooks/useHandoffs";
 import { useTasks } from "../hooks/useTasks";
 import { useSettings } from "../hooks/useSettings";
 import { AppLanguage, t } from "../lib/i18n";
+import XtermTerminal from "./XtermTerminal";
 
 interface TerminalTabsProps {
   rigId: string;
@@ -77,17 +78,6 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
   // Confirm delete
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  // Auto-scroll refs
-  const logRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const scrollToBottom = useCallback((workerId: string) => {
-    requestAnimationFrame(() => {
-      const el = logRefs.current.get(workerId);
-      if (el) {
-        el.scrollTop = el.scrollHeight;
-      }
-    });
-  }, []);
-
   // Load existing logs for all workers on mount / when workers change
   useEffect(() => {
     workers.forEach((w) => {
@@ -98,13 +88,12 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
             next.set(w.id, logs);
             return next;
           });
-          scrollToBottom(w.id);
         });
       }
     });
-  }, [workers, getLogs, workerLogs, scrollToBottom]);
+  }, [workers, getLogs, workerLogs]);
 
-  // Listen for live log events
+  // Listen for live log events (keep workerLogs state updated for footer line count)
   useEffect(() => {
     const unlisten = listen<[string, LogEntry]>("worker-log", (event) => {
       const [workerId, entry] = event.payload;
@@ -114,12 +103,11 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
         next.set(workerId, [...existing, entry]);
         return next;
       });
-      scrollToBottom(workerId);
     });
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [scrollToBottom]);
+  }, []);
 
   // Set default crewId when crews load
   useEffect(() => {
@@ -149,7 +137,6 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
         next.delete(id);
         return next;
       });
-      logRefs.current.delete(id);
       setConfirmDeleteId(null);
     },
     [remove],
@@ -654,49 +641,13 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
                     </div>
                   </div>
 
-                  {/* Terminal body — log output */}
-                  <div
-                    ref={(el) => {
-                      if (el) logRefs.current.set(w.id, el);
-                    }}
-                    className="terminal-scroll flex-1 min-h-0 overflow-auto bg-[#08090d] p-3 font-mono text-[11px] leading-relaxed"
-                  >
-                    {logs.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center h-full text-town-text-faint gap-2">
-                        {w.status === "running" ? (
-                          <>
-                            <div className="flex items-center gap-1">
-                              <span className="w-1 h-1 rounded-full bg-town-accent/60 animate-pulse" />
-                              <span className="w-1 h-1 rounded-full bg-town-accent/60 animate-pulse [animation-delay:200ms]" />
-                              <span className="w-1 h-1 rounded-full bg-town-accent/60 animate-pulse [animation-delay:400ms]" />
-                            </div>
-                            <span className="text-[10px]">
-                              Waiting for output...
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-[10px]">No output</span>
-                        )}
-                      </div>
-                    ) : (
-                      logs.map((entry, i) => {
-                        const lineColor =
-                          entry.stream === "stderr"
-                            ? "text-town-danger/80"
-                            : "text-town-text/90";
-                        return (
-                          <div
-                            key={i}
-                            className={`w-max min-w-full py-px whitespace-pre hover:bg-white/[0.02] ${lineColor}`}
-                          >
-                            <span className="mr-2 select-none text-[10px] text-town-text-faint/50">
-                              {new Date(entry.timestamp).toLocaleTimeString()}
-                            </span>
-                            {entry.line}
-                          </div>
-                        );
-                      })
-                    )}
+                  {/* Terminal body — xterm.js */}
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <XtermTerminal
+                      workerId={w.id}
+                      isRunning={w.status === "running"}
+                      initialLogs={logs}
+                    />
                   </div>
 
                   {/* Terminal footer */}
