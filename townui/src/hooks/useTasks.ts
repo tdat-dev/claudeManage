@@ -1,5 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
-import { TaskItem, TaskPriority, TaskUpdate, listTasks, createTask, updateTask, deleteTask } from "../lib/tauri";
+import {
+  TaskItem,
+  TaskPriority,
+  TaskUpdate,
+  listTasks,
+  createTask,
+  updateTask,
+  deleteTask,
+} from "../lib/tauri";
 
 export function useTasks(rigId: string | null) {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -27,20 +35,34 @@ export function useTasks(rigId: string | null) {
     refresh();
   }, [refresh]);
 
-  const addTask = useCallback(async (
-    title: string, description: string, tags: string[], priority: TaskPriority
-  ) => {
-    if (!rigId) return;
-    try {
-      setError(null);
-      const task = await createTask(rigId, title, description, tags, priority);
-      setTasks((prev) => [...prev, task]);
-      return task;
-    } catch (e) {
-      setError(String(e));
-      throw e;
-    }
-  }, [rigId]);
+  const addTask = useCallback(
+    async (
+      title: string,
+      description: string,
+      tags: string[],
+      priority: TaskPriority,
+      acceptanceCriteria?: string,
+    ) => {
+      if (!rigId) return;
+      try {
+        setError(null);
+        const task = await createTask(
+          rigId,
+          title,
+          description,
+          tags,
+          priority,
+          acceptanceCriteria,
+        );
+        setTasks((prev) => [...prev, task]);
+        return task;
+      } catch (e) {
+        setError(String(e));
+        throw e;
+      }
+    },
+    [rigId],
+  );
 
   const editTask = useCallback(async (id: string, updates: TaskUpdate) => {
     try {

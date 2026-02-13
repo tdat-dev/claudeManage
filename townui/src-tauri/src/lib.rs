@@ -28,9 +28,21 @@ pub fn run() {
             commands::tasks::create_task,
             commands::tasks::update_task,
             commands::tasks::delete_task,
+            // Hooks
+            commands::hooks::list_hooks,
+            commands::hooks::create_hook,
+            commands::hooks::assign_to_hook,
+            commands::hooks::sling,
+            commands::hooks::done,
+            commands::hooks::resume_hook,
+            // Handoffs
+            commands::handoffs::list_handoffs,
+            commands::handoffs::create_handoff,
+            commands::handoffs::accept_handoff,
             // Workers & Runs
             commands::workers::spawn_worker,
             commands::workers::stop_worker,
+            commands::workers::delete_worker,
             commands::workers::get_worker_status,
             commands::workers::list_workers,
             commands::workers::get_worker_logs,
@@ -46,6 +58,9 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::settings::validate_cli_path,
+            // Audit
+            commands::audit::list_audit_events,
+            commands::audit::get_task_audit_events,
         ])
         .run(tauri::generate_context!())
         .expect("error while running TownUI");

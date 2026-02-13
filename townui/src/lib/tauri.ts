@@ -48,7 +48,11 @@ export async function listCrews(rigId: string): Promise<CrewInfo[]> {
   return invoke<CrewInfo[]>("list_crews", { rigId });
 }
 
-export async function createCrew(rigId: string, name: string, baseBranch: string): Promise<CrewInfo> {
+export async function createCrew(
+  rigId: string,
+  name: string,
+  baseBranch: string,
+): Promise<CrewInfo> {
   return invoke<CrewInfo>("create_crew", { rigId, name, baseBranch });
 }
 
@@ -67,7 +71,14 @@ export async function listBranches(rigId: string): Promise<string[]> {
 // ── Task types ──
 
 export type TaskPriority = "low" | "medium" | "high" | "critical";
-export type TaskStatus = "todo" | "in_progress" | "done" | "cancelled";
+export type TaskStatus =
+  | "todo"
+  | "in_progress"
+  | "blocked"
+  | "deferred"
+  | "escalated"
+  | "done"
+  | "cancelled";
 
 export interface TaskItem {
   id: string;
@@ -78,6 +89,15 @@ export interface TaskItem {
   priority: TaskPriority;
   status: TaskStatus;
   assigned_worker_id: string | null;
+  // Gas Town extensions
+  acceptance_criteria: string | null;
+  dependencies: string[];
+  owner_actor_id: string | null;
+  convoy_id: string | null;
+  hook_id: string | null;
+  blocked_reason: string | null;
+  outcome: string | null;
+  completed_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -89,6 +109,13 @@ export interface TaskUpdate {
   priority?: TaskPriority;
   status?: TaskStatus;
   assigned_worker_id?: string | null;
+  acceptance_criteria?: string | null;
+  dependencies?: string[];
+  owner_actor_id?: string | null;
+  convoy_id?: string | null;
+  hook_id?: string | null;
+  blocked_reason?: string | null;
+  outcome?: string | null;
 }
 
 export async function listTasks(rigId: string): Promise<TaskItem[]> {
@@ -96,12 +123,27 @@ export async function listTasks(rigId: string): Promise<TaskItem[]> {
 }
 
 export async function createTask(
-  rigId: string, title: string, description: string, tags: string[], priority: TaskPriority
+  rigId: string,
+  title: string,
+  description: string,
+  tags: string[],
+  priority: TaskPriority,
+  acceptanceCriteria?: string,
 ): Promise<TaskItem> {
-  return invoke<TaskItem>("create_task", { rigId, title, description, tags, priority });
+  return invoke<TaskItem>("create_task", {
+    rigId,
+    title,
+    description,
+    tags,
+    priority,
+    acceptanceCriteria: acceptanceCriteria || null,
+  });
 }
 
-export async function updateTask(id: string, updates: TaskUpdate): Promise<TaskItem> {
+export async function updateTask(
+  id: string,
+  updates: TaskUpdate,
+): Promise<TaskItem> {
   return invoke<TaskItem>("update_task", { id, updates });
 }
 
@@ -109,10 +151,131 @@ export async function deleteTask(id: string): Promise<void> {
   return invoke<void>("delete_task", { id });
 }
 
+// ── Hook types ──
+
+export type HookStatus = "idle" | "assigned" | "running" | "done";
+
+export interface HookInfo {
+  hook_id: string;
+  rig_id: string;
+  attached_actor_id: string;
+  current_work_id: string | null;
+  state_blob: string | null;
+  status: HookStatus;
+  last_heartbeat: string;
+  created_at: string;
+}
+
+export async function listHooks(rigId: string): Promise<HookInfo[]> {
+  return invoke<HookInfo[]>("list_hooks", { rigId });
+}
+
+export async function createHook(
+  rigId: string,
+  attachedActorId: string,
+): Promise<HookInfo> {
+  return invoke<HookInfo>("create_hook", { rigId, attachedActorId });
+}
+
+export async function assignToHook(
+  hookId: string,
+  workItemId: string,
+  stateBlob?: string,
+): Promise<HookInfo> {
+  return invoke<HookInfo>("assign_to_hook", {
+    hookId,
+    workItemId,
+    stateBlob: stateBlob ?? null,
+  });
+}
+
+export async function sling(
+  hookId: string,
+  workItemId: string,
+  stateBlob?: string,
+): Promise<HookInfo> {
+  return invoke<HookInfo>("sling", {
+    hookId,
+    workItemId,
+    stateBlob: stateBlob ?? null,
+  });
+}
+
+export async function doneHook(
+  hookId: string,
+  outcome?: string,
+): Promise<HookInfo> {
+  return invoke<HookInfo>("done", { hookId, outcome: outcome ?? null });
+}
+
+export async function resumeHook(hookId: string): Promise<HookInfo> {
+  return invoke<HookInfo>("resume_hook", { hookId });
+}
+
+// ── Handoff types ──
+
+export type HandoffStatus = "pending" | "accepted";
+
+export interface HandoffInfo {
+  handoff_id: string;
+  rig_id: string;
+  from_actor_id: string;
+  to_actor_id: string;
+  work_item_id: string;
+  context_summary: string;
+  blockers: string[];
+  next_steps: string[];
+  created_at: string;
+  status: HandoffStatus;
+  accepted_at: string | null;
+}
+
+export async function listHandoffs(rigId: string): Promise<HandoffInfo[]> {
+  return invoke<HandoffInfo[]>("list_handoffs", { rigId });
+}
+
+export async function createHandoff(
+  rigId: string,
+  fromActorId: string,
+  toActorId: string,
+  workItemId: string,
+  contextSummary: string,
+  blockers: string[],
+  nextSteps: string[],
+): Promise<HandoffInfo> {
+  return invoke<HandoffInfo>("create_handoff", {
+    rigId,
+    fromActorId,
+    toActorId,
+    workItemId,
+    contextSummary,
+    blockers,
+    nextSteps,
+  });
+}
+
+export async function acceptHandoff(
+  handoffId: string,
+  acceptedByActorId?: string,
+): Promise<HandoffInfo> {
+  return invoke<HandoffInfo>("accept_handoff", {
+    handoffId,
+    acceptedByActorId: acceptedByActorId ?? null,
+  });
+}
+
 export async function executeTask(
-  taskId: string, crewId: string, agentType: string, templateName: string
+  taskId: string,
+  crewId: string,
+  agentType: string,
+  templateName: string,
 ): Promise<RunInfo> {
-  return invoke<RunInfo>("execute_task", { taskId, crewId, agentType, templateName });
+  return invoke<RunInfo>("execute_task", {
+    taskId,
+    crewId,
+    agentType,
+    templateName,
+  });
 }
 
 // ── Worker types ──
@@ -136,12 +299,24 @@ export interface LogEntry {
   line: string;
 }
 
-export async function spawnWorker(crewId: string, agentType: string, initialPrompt: string): Promise<WorkerInfo> {
-  return invoke<WorkerInfo>("spawn_worker", { crewId, agentType, initialPrompt });
+export async function spawnWorker(
+  crewId: string,
+  agentType: string,
+  initialPrompt: string,
+): Promise<WorkerInfo> {
+  return invoke<WorkerInfo>("spawn_worker", {
+    crewId,
+    agentType,
+    initialPrompt,
+  });
 }
 
 export async function stopWorker(id: string): Promise<void> {
   return invoke<void>("stop_worker", { id });
+}
+
+export async function deleteWorker(id: string): Promise<void> {
+  return invoke<void>("delete_worker", { id });
 }
 
 export async function getWorkerStatus(id: string): Promise<WorkerInfo> {
@@ -201,7 +376,10 @@ export async function listTemplates(): Promise<TemplateInfo[]> {
   return invoke<TemplateInfo[]>("list_templates");
 }
 
-export async function renderTemplate(name: string, vars: Record<string, string>): Promise<string> {
+export async function renderTemplate(
+  name: string,
+  vars: Record<string, string>,
+): Promise<string> {
   return invoke<string>("render_template", { name, vars });
 }
 
@@ -211,6 +389,7 @@ export interface AppSettings {
   cli_paths: Record<string, string>;
   env_vars: Record<string, string>;
   default_template: string;
+  language: "en" | "vi";
 }
 
 export async function getSettings(): Promise<AppSettings> {
@@ -223,4 +402,52 @@ export async function updateSettings(settings: AppSettings): Promise<void> {
 
 export async function validateCliPath(path: string): Promise<string> {
   return invoke<string>("validate_cli_path", { path });
+}
+
+// ── Audit types ──
+
+export type AuditEventType =
+  | "task_created"
+  | "task_updated"
+  | "task_status_changed"
+  | "task_deleted"
+  | "worker_spawned"
+  | "worker_stopped"
+  | "worker_failed"
+  | "worker_completed"
+  | "run_started"
+  | "run_completed"
+  | "run_failed"
+  | "hook_created"
+  | "hook_assigned"
+  | "hook_slung"
+  | "hook_done"
+  | "hook_resumed"
+  | "handoff_created"
+  | "handoff_accepted"
+  | "convoy_created"
+  | "convoy_updated"
+  | "convoy_completed";
+
+export interface AuditEvent {
+  event_id: string;
+  rig_id: string;
+  actor_id: string | null;
+  work_item_id: string | null;
+  event_type: AuditEventType;
+  payload_json: string;
+  emitted_at: string;
+}
+
+export async function listAuditEvents(
+  rigId: string,
+  limit?: number,
+): Promise<AuditEvent[]> {
+  return invoke<AuditEvent[]>("list_audit_events", { rigId, limit });
+}
+
+export async function getTaskAuditEvents(
+  taskId: string,
+): Promise<AuditEvent[]> {
+  return invoke<AuditEvent[]>("get_task_audit_events", { taskId });
 }

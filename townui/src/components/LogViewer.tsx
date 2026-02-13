@@ -23,29 +23,75 @@ export default function LogViewer({ logs, title, className }: LogViewerProps) {
     : logs;
 
   return (
-    <div className="bg-town-bg border border-town-border rounded-lg overflow-hidden">
+    <div className="glass-card overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 bg-town-surface border-b border-town-border">
-        <span className="text-xs font-semibold text-town-text-muted uppercase tracking-wider">
-          {title || "Logs"}
-        </span>
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-town-border/30 bg-town-surface/50">
         <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search..."
-            className="bg-town-bg border border-town-border rounded px-2 py-1 text-xs w-40 focus:outline-none focus:border-town-accent"
-          />
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="text-town-accent"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="4 17 10 11 4 5" />
+            <line x1="12" y1="19" x2="20" y2="19" />
+          </svg>
+          <span className="section-title">{title || "Logs"}</span>
+          <span className="text-[10px] text-town-text-faint bg-town-bg/50 px-1.5 py-0.5 rounded-full">
+            {filtered.length}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-town-text-faint"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter..."
+              className="bg-town-bg/60 border border-town-border/40 rounded-lg pl-8 pr-3 py-1.5 text-xs w-40 focus:outline-none focus:border-town-accent/50 focus:ring-1 focus:ring-town-accent/20 transition-all"
+            />
+          </div>
           <button
             onClick={() => setAutoScroll(!autoScroll)}
-            className={`text-xs px-2 py-1 rounded transition-colors ${
+            className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-all duration-200 ${
               autoScroll
-                ? "bg-town-accent/10 text-town-accent"
-                : "bg-town-border text-town-text-muted"
+                ? "bg-town-accent/10 text-town-accent border border-town-accent/20"
+                : "bg-town-bg/50 text-town-text-faint border border-town-border/40 hover:text-town-text-muted"
             }`}
           >
-            Auto-scroll
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="7 13 12 18 17 13" />
+              <polyline points="7 6 12 11 17 6" />
+            </svg>
+            Auto
           </button>
         </div>
       </div>
@@ -53,19 +99,23 @@ export default function LogViewer({ logs, title, className }: LogViewerProps) {
       {/* Log content */}
       <div
         ref={containerRef}
-        className={`${className ?? "h-80"} overflow-y-auto p-3 font-mono text-xs leading-relaxed`}
+        className={`${className ?? "h-80"} overflow-y-auto p-3 font-mono text-[12px] leading-[1.6] bg-town-bg/30`}
       >
         {filtered.length === 0 ? (
-          <div className="text-town-text-muted text-center py-8">No log output yet.</div>
+          <div className="flex items-center justify-center h-full text-town-text-faint text-xs">
+            {search ? "No matching lines" : "No log output yet"}
+          </div>
         ) : (
           filtered.map((entry, i) => (
             <div
               key={i}
-              className={`whitespace-pre-wrap break-all ${
-                entry.stream === "stderr" ? "text-town-danger/80" : "text-town-text"
+              className={`whitespace-pre-wrap break-all hover:bg-town-surface/30 px-1 -mx-1 rounded ${
+                entry.stream === "stderr"
+                  ? "text-town-danger/75"
+                  : "text-town-text/85"
               }`}
             >
-              <span className="text-town-text-muted/50 select-none">
+              <span className="text-town-text-faint/40 select-none text-[11px]">
                 {new Date(entry.timestamp).toLocaleTimeString()}{" "}
               </span>
               {entry.line}

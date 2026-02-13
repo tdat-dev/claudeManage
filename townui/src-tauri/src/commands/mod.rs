@@ -1,4 +1,7 @@
+pub mod audit;
 pub mod crews;
+pub mod handoffs;
+pub mod hooks;
 pub mod rigs;
 pub mod settings;
 pub mod tasks;

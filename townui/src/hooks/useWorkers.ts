@@ -1,5 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
-import { WorkerInfo, LogEntry, listWorkers, spawnWorker, stopWorker, getWorkerLogs } from "../lib/tauri";
+import {
+  WorkerInfo,
+  LogEntry,
+  listWorkers,
+  spawnWorker,
+  stopWorker,
+  deleteWorker,
+  getWorkerLogs,
+} from "../lib/tauri";
 import { listen } from "@tauri-apps/api/event";
 
 export function useWorkers(rigId: string | null) {
@@ -34,8 +42,10 @@ export function useWorkers(rigId: string | null) {
       const [workerId, newStatus] = event.payload;
       setWorkers((prev) =>
         prev.map((w) =>
-          w.id === workerId ? { ...w, status: newStatus as WorkerInfo["status"] } : w
-        )
+          w.id === workerId
+            ? { ...w, status: newStatus as WorkerInfo["status"] }
+            : w,
+        ),
       );
     });
     return () => {
@@ -43,25 +53,40 @@ export function useWorkers(rigId: string | null) {
     };
   }, []);
 
-  const spawn = useCallback(async (crewId: string, agentType: string, initialPrompt: string) => {
-    try {
-      setError(null);
-      const worker = await spawnWorker(crewId, agentType, initialPrompt);
-      setWorkers((prev) => [...prev, worker]);
-      return worker;
-    } catch (e) {
-      setError(String(e));
-      throw e;
-    }
-  }, []);
+  const spawn = useCallback(
+    async (crewId: string, agentType: string, initialPrompt: string) => {
+      try {
+        setError(null);
+        const worker = await spawnWorker(crewId, agentType, initialPrompt);
+        setWorkers((prev) => [...prev, worker]);
+        return worker;
+      } catch (e) {
+        setError(String(e));
+        throw e;
+      }
+    },
+    [],
+  );
 
   const stop = useCallback(async (id: string) => {
     try {
       setError(null);
       await stopWorker(id);
       setWorkers((prev) =>
-        prev.map((w) => (w.id === id ? { ...w, status: "stopped" as const } : w))
+        prev.map((w) =>
+          w.id === id ? { ...w, status: "stopped" as const } : w,
+        ),
       );
+    } catch (e) {
+      setError(String(e));
+    }
+  }, []);
+
+  const remove = useCallback(async (id: string) => {
+    try {
+      setError(null);
+      await deleteWorker(id);
+      setWorkers((prev) => prev.filter((w) => w.id !== id));
     } catch (e) {
       setError(String(e));
     }
@@ -76,5 +101,5 @@ export function useWorkers(rigId: string | null) {
     }
   }, []);
 
-  return { workers, loading, error, refresh, spawn, stop, getLogs };
+  return { workers, loading, error, refresh, spawn, stop, remove, getLogs };
 }

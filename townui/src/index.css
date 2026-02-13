@@ -2,27 +2,169 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  overflow: hidden;
-  user-select: none;
+@layer base {
+  body {
+    margin: 0;
+    padding: 0;
+    font-family:
+      "Inter",
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      Roboto,
+      sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: #0a0b10;
+    color: #e8ecf4;
+  }
+
+  ::selection {
+    background: rgba(124, 92, 252, 0.3);
+    color: #fff;
+  }
 }
 
+@layer components {
+  /* Glass card */
+  .glass-card {
+    @apply bg-town-surface/80 backdrop-blur-sm border border-town-border/60 rounded-xl;
+  }
+
+  /* Input styles */
+  .input-base {
+    @apply w-full bg-town-bg/80 border border-town-border rounded-lg px-3.5 py-2.5 text-sm text-town-text
+           placeholder:text-town-text-faint
+           focus:outline-none focus:border-town-accent/50 focus:ring-1 focus:ring-town-accent/20
+           transition-all duration-200;
+  }
+
+  .select-base {
+    @apply w-full bg-town-bg/80 border border-town-border rounded-lg px-3.5 py-2.5 text-sm text-town-text
+           focus:outline-none focus:border-town-accent/50 focus:ring-1 focus:ring-town-accent/20
+           transition-all duration-200 cursor-pointer appearance-none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%238892a8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+  }
+
+  /* Button styles */
+  .btn-primary {
+    @apply px-4 py-2.5 bg-gradient-accent rounded-lg text-sm font-semibold text-white
+           hover:shadow-glow-sm active:scale-[0.98]
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none
+           transition-all duration-200;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2.5 bg-town-surface-hover border border-town-border rounded-lg text-sm font-medium text-town-text
+           hover:bg-town-surface-active hover:border-town-border-light
+           active:scale-[0.98]
+           transition-all duration-200;
+  }
+
+  .btn-ghost {
+    @apply px-4 py-2.5 rounded-lg text-sm font-medium text-town-text-muted
+           hover:text-town-text hover:bg-town-surface-hover
+           transition-all duration-200;
+  }
+
+  .btn-danger {
+    @apply px-4 py-2.5 bg-town-danger-soft border border-town-danger/20 rounded-lg text-sm font-medium text-town-danger
+           hover:bg-town-danger/20 hover:border-town-danger/30
+           active:scale-[0.98]
+           transition-all duration-200;
+  }
+
+  .btn-success {
+    @apply px-4 py-2.5 bg-town-success-soft border border-town-success/20 rounded-lg text-sm font-medium text-town-success
+           hover:bg-town-success/20 hover:border-town-success/30
+           active:scale-[0.98]
+           transition-all duration-200;
+  }
+
+  /* Badge styles */
+  .badge {
+    @apply inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-md;
+  }
+
+  /* Section header */
+  .section-title {
+    @apply text-[11px] font-bold uppercase tracking-[0.08em] text-town-text-faint;
+  }
+
+  /* Dialog overlay */
+  .dialog-overlay {
+    @apply fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in;
+  }
+
+  .dialog-content {
+    @apply bg-town-surface border border-town-border/60 rounded-2xl p-0 shadow-dialog animate-scale-in overflow-hidden;
+  }
+}
+
+/* Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #1a1d27;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a2d3a;
-  border-radius: 3px;
+  background: #232638;
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3d4a;
+  background: #2e3250;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Terminal-like scrollbar for worker logs */
+.terminal-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #4a5067 #0b0d13;
+}
+
+.terminal-scroll::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.terminal-scroll::-webkit-scrollbar-track {
+  background: #0b0d13;
+  border: 1px solid #1a1e2d;
+}
+
+.terminal-scroll::-webkit-scrollbar-thumb {
+  background: #3a4158;
+  border: 1px solid #5a637f;
+  border-radius: 0;
+}
+
+.terminal-scroll::-webkit-scrollbar-thumb:hover {
+  background: #4a536f;
+}
+
+/* Custom select option styling */
+option {
+  background: #13151e;
+  color: #e8ecf4;
+  padding: 8px;
+}
+
+optgroup {
+  background: #0e1018;
+  color: #8892a8;
+  font-weight: 600;
 }
