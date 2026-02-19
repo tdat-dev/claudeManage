@@ -1,2 +1,14 @@
+pub mod actors;
+pub mod audit;
+pub mod convoys;
+pub mod crews;
+pub mod handoffs;
+pub mod hooks;
 pub mod rigs;
 pub mod terminal;
+pub mod seed;
+pub mod settings;
+pub mod tasks;
+pub mod templates;
+pub mod workers;
+pub mod workflows;
