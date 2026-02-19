@@ -11,6 +11,14 @@ export interface RigInfo {
   is_git_repo: boolean;
 }
 
+export interface TerminalCommandResult {
+  command: string;
+  stdout: string;
+  stderr: string;
+  exit_code: number;
+  duration_ms: number;
+}
+
 export async function listRigs(): Promise<RigInfo[]> {
   return invoke<RigInfo[]>("list_rigs");
 }
@@ -25,4 +33,8 @@ export async function getRig(id: string): Promise<RigInfo> {
 
 export async function deleteRig(id: string): Promise<void> {
   return invoke<void>("delete_rig", { id });
+}
+
+export async function runRigCommand(rigId: string, command: string): Promise<TerminalCommandResult> {
+  return invoke<TerminalCommandResult>("run_rig_command", { rigId, command });
 }

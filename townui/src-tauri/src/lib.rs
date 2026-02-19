@@ -15,6 +15,7 @@ pub fn run() {
             commands::rigs::create_rig,
             commands::rigs::get_rig,
             commands::rigs::delete_rig,
+            commands::terminal::run_rig_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running TownUI");
