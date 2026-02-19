@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { shortenPathForCli } from "../lib/path";
 
 interface RigCreateDialogProps {
   onCreated: (path: string) => Promise<void>;
@@ -40,8 +41,11 @@ export default function RigCreateDialog({ onCreated, onClose }: RigCreateDialogP
         <p className="text-town-text-muted text-sm mb-4">Select a folder containing a git repository to add as a rig.</p>
 
         <div className="flex gap-2 mb-4">
-          <div className="flex-1 bg-town-bg border border-town-border rounded px-3 py-2 text-sm truncate">
-            {selectedPath || "No folder selected"}
+          <div
+            className="flex-1 bg-town-bg border border-town-border rounded px-3 py-2 text-sm truncate"
+            title={selectedPath || undefined}
+          >
+            {selectedPath ? shortenPathForCli(selectedPath, 56) : "No folder selected"}
           </div>
           <button
             onClick={handleBrowse}

@@ -1,4 +1,5 @@
 import { RigInfo } from "../lib/tauri";
+import { shortenPathForCli } from "../lib/path";
 
 interface RigDetailsProps {
   rig: RigInfo;
@@ -18,7 +19,9 @@ export default function RigDetails({ rig, onDelete, onRefresh }: RigDetailsProps
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">{rig.name}</h1>
-          <p className="text-town-text-muted text-sm mt-1 font-mono">{rig.path}</p>
+          <p className="text-town-text-muted text-sm mt-1 font-mono" title={rig.path}>
+            {shortenPathForCli(rig.path, 72)}
+          </p>
         </div>
         <div className="flex gap-2">
           <button

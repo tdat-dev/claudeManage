@@ -1,4 +1,5 @@
 import { RigInfo } from "../lib/tauri";
+import { shortenPathForCli } from "../lib/path";
 
 interface RigListProps {
   rigs: RigInfo[];
@@ -38,7 +39,9 @@ export default function RigList({ rigs, selectedId, onSelect, onAddClick }: RigL
               }`}
             >
               <div className="font-medium text-sm truncate">{rig.name}</div>
-              <div className="text-xs text-town-text-muted truncate mt-0.5">{rig.path}</div>
+              <div className="text-xs text-town-text-muted truncate mt-0.5" title={rig.path}>
+                {shortenPathForCli(rig.path)}
+              </div>
               {rig.git_branch && (
                 <div className="text-xs text-town-accent mt-1">{rig.git_branch}</div>
               )}
