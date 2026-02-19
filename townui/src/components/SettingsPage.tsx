@@ -1,5 +1,12 @@
-import { useState } from "react";
-import { AppSettings } from "../lib/tauri";
+import { useState, useEffect } from "react";
+import {
+  AppSettings,
+  getSeedInfo,
+  seedWorkflowTemplates,
+  SeedInfo,
+  listTemplates,
+  TemplateInfo,
+} from "../lib/tauri";
 import { t } from "../lib/i18n";
 
 interface SettingsPageProps {
@@ -20,6 +27,19 @@ export default function SettingsPage({
   const [draft, setDraft] = useState<AppSettings | null>(null);
   const [validationResult, setValidationResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [seedInfo, setSeedInfo] = useState<SeedInfo | null>(null);
+  const [seeding, setSeeding] = useState(false);
+  const [seedResult, setSeedResult] = useState<string[] | null>(null);
+  const [templates, setTemplates] = useState<TemplateInfo[]>([]);
+
+  useEffect(() => {
+    getSeedInfo()
+      .then(setSeedInfo)
+      .catch(() => {});
+    listTemplates()
+      .then(setTemplates)
+      .catch(() => {});
+  }, []);
 
   const current = draft || settings;
   const language = (current?.language ?? "en") as "en" | "vi";
@@ -407,14 +427,217 @@ export default function SettingsPage({
               }
               className="select-base"
             >
-              <option value="implement_feature">Implement Feature</option>
-              <option value="fix_bug">Fix Bug</option>
-              <option value="write_tests">Write Tests</option>
-              <option value="refactor">Refactor</option>
+              {templates.length > 0 ? (
+                templates.map((tpl) => (
+                  <option key={tpl.name} value={tpl.name}>
+                    {tpl.name
+                      .replace(/_/g, " ")
+                      .replace(/\b\w/g, (c) => c.toUpperCase())}
+                    {tpl.is_builtin ? "" : " (custom)"}
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="implement_feature">Implement Feature</option>
+                  <option value="fix_bug">Fix Bug</option>
+                  <option value="write_tests">Write Tests</option>
+                  <option value="refactor">Refactor</option>
+                </>
+              )}
             </select>
             <p className="text-xs text-town-text-faint">
               Template used when creating new tasks without specifying one
             </p>
+          </section>
+
+          {/* Prompt Template Catalog */}
+          <section className="glass-card p-5 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-md bg-town-accent/10 flex items-center justify-center">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="text-town-accent"
+                >
+                  <rect x="3" y="3" width="7" height="7" />
+                  <rect x="14" y="3" width="7" height="7" />
+                  <rect x="14" y="14" width="7" height="7" />
+                  <rect x="3" y="14" width="7" height="7" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="section-title !mb-0">Prompt Template Catalog</h3>
+                <p className="text-[10px] text-town-text-faint mt-0.5">
+                  {templates.length} templates available — bigtech-grade prompts
+                  for AI agents
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto pr-1">
+              {templates.map((tpl) => (
+                <div
+                  key={tpl.name}
+                  className="group flex items-start gap-3 p-3 rounded-lg bg-town-surface-hover/40 hover:bg-town-surface-hover/80 transition-all duration-200"
+                >
+                  <div className="shrink-0 mt-0.5">
+                    {tpl.is_builtin ? (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-town-accent/10 text-town-accent">
+                        Built-in
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-town-warning/10 text-town-warning">
+                        Custom
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-town-text">
+                      {tpl.name
+                        .replace(/_/g, " ")
+                        .replace(/\b\w/g, (c) => c.toUpperCase())}
+                    </div>
+                    <div className="text-xs text-town-text-muted mt-0.5 line-clamp-1">
+                      {tpl.description}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Seed Data — Bigtech Presets */}
+          <section className="glass-card p-5 space-y-4 border border-town-accent/20">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-md bg-gradient-to-br from-town-accent/20 to-town-success/20 flex items-center justify-center">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="text-town-accent"
+                >
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="section-title !mb-0">Bigtech Preset Data</h3>
+                <p className="text-[10px] text-town-text-faint mt-0.5">
+                  Load production-ready workflow templates used at FAANG
+                  companies
+                </p>
+              </div>
+            </div>
+
+            {seedInfo && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-4 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-6 h-6 rounded-md bg-town-accent/10 flex items-center justify-center text-town-accent font-bold text-xs">
+                      {seedInfo.workflow_template_count}
+                    </span>
+                    <span className="text-town-text-muted">
+                      Workflow Templates
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-6 h-6 rounded-md bg-town-secondary/10 flex items-center justify-center text-town-secondary font-bold text-xs">
+                      {seedInfo.prompt_template_count}
+                    </span>
+                    <span className="text-town-text-muted">
+                      Prompt Templates
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5">
+                  {seedInfo.workflow_template_names.map((name) => (
+                    <div
+                      key={name}
+                      className="flex items-center gap-1.5 text-xs text-town-text-muted"
+                    >
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        className="text-town-success shrink-0"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      {name}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-3 pt-1">
+                  <button
+                    onClick={async () => {
+                      setSeeding(true);
+                      setSeedResult(null);
+                      try {
+                        const added = await seedWorkflowTemplates();
+                        setSeedResult(added);
+                        // Refresh seed info
+                        getSeedInfo()
+                          .then(setSeedInfo)
+                          .catch(() => {});
+                      } catch (e) {
+                        setError(String(e));
+                      } finally {
+                        setSeeding(false);
+                      }
+                    }}
+                    disabled={seeding}
+                    className="btn-primary flex items-center gap-2 text-sm"
+                  >
+                    {seeding ? (
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                      >
+                        <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                        <path d="M2 17l10 5 10-5" />
+                        <path d="M2 12l10 5 10-5" />
+                      </svg>
+                    )}
+                    {seeding ? "Loading..." : "Load Bigtech Presets"}
+                  </button>
+                  <p className="text-[10px] text-town-text-faint">
+                    Idempotent — won't duplicate existing templates
+                  </p>
+                </div>
+
+                {seedResult && (
+                  <div className="animate-fade-in rounded-lg px-3 py-2.5 border text-xs bg-town-success/5 border-town-success/20 text-town-success">
+                    {seedResult.length === 0 ? (
+                      <span>All bigtech templates already loaded ✓</span>
+                    ) : (
+                      <span>
+                        Added {seedResult.length} workflow templates:{" "}
+                        {seedResult.join(", ")}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           {/* Language */}

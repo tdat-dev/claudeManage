@@ -751,3 +751,19 @@ export async function cancelWorkflow(
 ): Promise<WorkflowInstance> {
   return invoke<WorkflowInstance>("cancel_workflow", { instanceId });
 }
+
+// ── Seed Data ────────────────────────────────────────────────────────
+
+export interface SeedInfo {
+  workflow_template_count: number;
+  workflow_template_names: string[];
+  prompt_template_count: number;
+}
+
+export async function getSeedInfo(): Promise<SeedInfo> {
+  return invoke<SeedInfo>("get_seed_info");
+}
+
+export async function seedWorkflowTemplates(): Promise<string[]> {
+  return invoke<string[]>("seed_workflow_templates");
+}
