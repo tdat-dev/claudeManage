@@ -1,9 +1,6 @@
 import { useState } from "react";
 import { RigInfo } from "../lib/tauri";
-import { useCrews } from "../hooks/useCrews";
-import CrewList from "./CrewList";
-import CrewCreateDialog from "./CrewCreateDialog";
-import { invoke } from "@tauri-apps/api/core";
+import { shortenPathForCli } from "../lib/path";
 
 interface RigDetailsProps {
   rig: RigInfo;
@@ -50,32 +47,13 @@ export default function RigDetails({
   };
 
   return (
-    <div className="p-8 max-w-3xl animate-fade-in">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-8">
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-accent flex items-center justify-center shadow-glow-sm shrink-0">
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="white"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="4" />
-              <line x1="1.05" y1="12" x2="7" y2="12" />
-              <line x1="17.01" y1="12" x2="22.96" y2="12" />
-            </svg>
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">{rig.name}</h1>
-            <p className="text-town-text-muted text-sm mt-1 font-mono">
-              {rig.path}
-            </p>
-          </div>
+    <div className="p-6 max-w-2xl">
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">{rig.name}</h1>
+          <p className="text-town-text-muted text-sm mt-1 font-mono" title={rig.path}>
+            {shortenPathForCli(rig.path, 72)}
+          </p>
         </div>
         <div className="flex gap-2">
           <button

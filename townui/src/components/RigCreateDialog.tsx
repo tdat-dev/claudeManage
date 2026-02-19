@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { shortenPathForCli } from "../lib/path";
 
 interface RigCreateDialogProps {
   onCreated: (path: string) => Promise<void>;
@@ -41,34 +42,17 @@ export default function RigCreateDialog({
   };
 
   return (
-    <div className="dialog-overlay" onClick={onClose}>
-      <div
-        className="dialog-content w-[500px]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-6 pt-6 pb-4">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-accent flex items-center justify-center shadow-glow-sm">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="white"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-lg font-bold">Add Rig</h2>
-              <p className="text-xs text-town-text-muted">
-                Select a git repository folder
-              </p>
-            </div>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-town-surface border border-town-border rounded-lg p-6 w-[480px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold mb-4">Add Rig</h2>
+        <p className="text-town-text-muted text-sm mb-4">Select a folder containing a git repository to add as a rig.</p>
+
+        <div className="flex gap-2 mb-4">
+          <div
+            className="flex-1 bg-town-bg border border-town-border rounded px-3 py-2 text-sm truncate"
+            title={selectedPath || undefined}
+          >
+            {selectedPath ? shortenPathForCli(selectedPath, 56) : "No folder selected"}
           </div>
         </div>
 
