@@ -9,3 +9,4 @@ pub mod settings;
 pub mod tasks;
 pub mod templates;
 pub mod workers;
+pub mod workflows;

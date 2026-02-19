@@ -24,6 +24,9 @@ pub enum AuditEventType {
     ConvoyCreated,
     ConvoyUpdated,
     ConvoyCompleted,
+    WorkflowInstantiated,
+    WorkflowCompleted,
+    WorkflowFailed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

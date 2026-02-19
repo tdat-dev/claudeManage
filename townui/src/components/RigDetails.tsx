@@ -245,6 +245,7 @@ export default function RigDetails({
       {showCrewCreate && (
         <CrewCreateDialog
           branches={branches}
+          existingCrewNames={crews.map((c) => c.name)}
           onCreated={async (name, baseBranch) => {
             await addCrew(name, baseBranch);
           }}

@@ -760,6 +760,17 @@ pub fn execute_task(
     state: State<AppState>,
     app: AppHandle,
 ) -> Result<Run, String> {
+    let effective_agent_type = if agent_type.trim().is_empty() {
+        let settings = state.settings.lock().unwrap();
+        if settings.default_cli.trim().is_empty() {
+            "claude".to_string()
+        } else {
+            settings.default_cli.clone()
+        }
+    } else {
+        agent_type.clone()
+    };
+
     // Get task
     let tasks = state.tasks.lock().unwrap();
     let task = tasks
@@ -801,7 +812,12 @@ pub fn execute_task(
     );
 
     // Spawn the worker via inner function (no State<> dependency)
-    let worker = spawn_worker_inner(crew_id.clone(), agent_type.clone(), rendered.clone(), app)?;
+    let worker = spawn_worker_inner(
+        crew_id.clone(),
+        effective_agent_type.clone(),
+        rendered.clone(),
+        app,
+    )?;
 
     // Create run record
     let run = Run::new(
@@ -809,7 +825,7 @@ pub fn execute_task(
         worker.id.clone(),
         crew_id,
         rig_id,
-        agent_type,
+        effective_agent_type,
         template_name,
         rendered,
     );

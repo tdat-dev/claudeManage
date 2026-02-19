@@ -338,6 +338,45 @@ export default function SettingsPage({
             </div>
           </section>
 
+          {/* Default CLI */}
+          <section className="glass-card p-5 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-md bg-town-warning/10 flex items-center justify-center">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="text-town-warning"
+                >
+                  <polyline points="4 17 10 11 4 5" />
+                  <line x1="12" y1="19" x2="20" y2="19" />
+                </svg>
+              </div>
+              <h3 className="section-title !mb-0">Default CLI</h3>
+            </div>
+
+            <select
+              value={current.default_cli || "claude"}
+              onChange={(e) =>
+                setDraft({ ...current, default_cli: e.target.value })
+              }
+              className="select-base"
+            >
+              {Object.keys(current.cli_paths).map((key) => (
+                <option key={key} value={key}>
+                  {key}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-town-text-faint">
+              CLI mặc định cho Execute Task, Spawn Worker và fallback khi hệ
+              thống không có agent cụ thể.
+            </p>
+          </section>
+
           {/* Default Template */}
           <section className="glass-card p-5 space-y-4">
             <div className="flex items-center gap-2.5">

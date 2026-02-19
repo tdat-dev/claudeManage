@@ -5,8 +5,14 @@ pub struct AppSettings {
     pub cli_paths: std::collections::HashMap<String, String>,
     pub env_vars: std::collections::HashMap<String, String>,
     pub default_template: String,
+    #[serde(default = "default_cli")]
+    pub default_cli: String,
     #[serde(default = "default_language")]
     pub language: String,
+}
+
+fn default_cli() -> String {
+    "claude".to_string()
 }
 
 fn default_language() -> String {
@@ -74,6 +80,7 @@ impl Default for AppSettings {
             cli_paths,
             env_vars: std::collections::HashMap::new(),
             default_template: "implement_feature".to_string(),
+            default_cli: default_cli(),
             language: default_language(),
         }
     }

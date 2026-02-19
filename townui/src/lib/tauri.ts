@@ -68,6 +68,20 @@ export async function listBranches(rigId: string): Promise<string[]> {
   return invoke<string[]>("list_branches", { rigId });
 }
 
+// ── Crew Presets ──
+
+export interface CrewPreset {
+  key: string;
+  name: string;
+  icon: string;
+  description: string;
+  color: string;
+}
+
+export async function getCrewPresets(): Promise<CrewPreset[]> {
+  return invoke<CrewPreset[]>("get_crew_presets");
+}
+
 // ── Task types ──
 
 export type TaskPriority = "low" | "medium" | "high" | "critical";
@@ -483,6 +497,7 @@ export interface AppSettings {
   cli_paths: Record<string, string>;
   env_vars: Record<string, string>;
   default_template: string;
+  default_cli: string;
   language: "en" | "vi";
 }
 
@@ -521,7 +536,10 @@ export type AuditEventType =
   | "handoff_accepted"
   | "convoy_created"
   | "convoy_updated"
-  | "convoy_completed";
+  | "convoy_completed"
+  | "workflow_instantiated"
+  | "workflow_completed"
+  | "workflow_failed";
 
 export interface AuditEvent {
   event_id: string;
@@ -544,4 +562,192 @@ export async function getTaskAuditEvents(
   taskId: string,
 ): Promise<AuditEvent[]> {
   return invoke<AuditEvent[]>("get_task_audit_events", { taskId });
+}
+
+// ── Health Metrics ──
+
+export interface StuckTaskInfo {
+  task_id: string;
+  title: string;
+  minutes_stuck: number;
+  assigned_worker_id: string | null;
+}
+
+export interface HealthMetrics {
+  total_tasks: number;
+  todo: number;
+  in_progress: number;
+  blocked: number;
+  escalated: number;
+  deferred: number;
+  done: number;
+  cancelled: number;
+  stuck_tasks: StuckTaskInfo[];
+  workers_running: number;
+  workers_failed: number;
+  workers_total: number;
+  hooks_idle: number;
+  hooks_assigned: number;
+  hooks_running: number;
+  handoffs_pending: number;
+}
+
+export async function getHealthMetrics(
+  rigId: string,
+  stuckThresholdMinutes?: number,
+): Promise<HealthMetrics> {
+  return invoke<HealthMetrics>("get_health_metrics", {
+    rigId,
+    stuckThresholdMinutes: stuckThresholdMinutes ?? null,
+  });
+}
+
+export async function escalateStuckTasks(
+  rigId: string,
+  thresholdMinutes?: number,
+): Promise<TaskItem[]> {
+  return invoke<TaskItem[]>("escalate_stuck_tasks", {
+    rigId,
+    thresholdMinutes: thresholdMinutes ?? null,
+  });
+}
+
+// ── Workflow types ──
+
+export type StepStatus = "pending" | "running" | "done" | "failed" | "skipped";
+export type WorkflowStatus =
+  | "created"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export interface WorkflowStep {
+  step_id: string;
+  title: string;
+  description: string;
+  command_template: string;
+  agent_type: string;
+  dependencies: string[];
+  acceptance_criteria: string | null;
+}
+
+export interface WorkflowTemplate {
+  template_id: string;
+  name: string;
+  description: string;
+  steps: WorkflowStep[];
+  variables: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StepState {
+  status: StepStatus;
+  started_at: string | null;
+  finished_at: string | null;
+  worker_id: string | null;
+  outcome: string | null;
+}
+
+export interface WorkflowInstance {
+  instance_id: string;
+  template_id: string;
+  template_name: string;
+  rig_id: string;
+  convoy_id: string | null;
+  variables_resolved: Record<string, string>;
+  steps_status: Record<string, StepState>;
+  status: WorkflowStatus;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+export async function listWorkflowTemplates(): Promise<WorkflowTemplate[]> {
+  return invoke<WorkflowTemplate[]>("list_workflow_templates");
+}
+
+export async function getWorkflowTemplate(
+  templateId: string,
+): Promise<WorkflowTemplate> {
+  return invoke<WorkflowTemplate>("get_workflow_template", { templateId });
+}
+
+export async function createWorkflowTemplate(
+  name: string,
+  description: string,
+  steps: WorkflowStep[],
+  variables: string[],
+): Promise<WorkflowTemplate> {
+  return invoke<WorkflowTemplate>("create_workflow_template", {
+    name,
+    description,
+    steps,
+    variables,
+  });
+}
+
+export async function deleteWorkflowTemplate(
+  templateId: string,
+): Promise<void> {
+  return invoke<void>("delete_workflow_template", { templateId });
+}
+
+export async function listWorkflowInstances(
+  rigId: string,
+): Promise<WorkflowInstance[]> {
+  return invoke<WorkflowInstance[]>("list_workflow_instances", { rigId });
+}
+
+export async function getWorkflowInstance(
+  instanceId: string,
+): Promise<WorkflowInstance> {
+  return invoke<WorkflowInstance>("get_workflow_instance", { instanceId });
+}
+
+export async function instantiateWorkflow(
+  templateId: string,
+  rigId: string,
+  convoyId: string | null,
+  variables: Record<string, string>,
+): Promise<WorkflowInstance> {
+  return invoke<WorkflowInstance>("instantiate_workflow", {
+    templateId,
+    rigId,
+    convoyId,
+    variables,
+  });
+}
+
+export async function startWorkflow(
+  instanceId: string,
+): Promise<WorkflowInstance> {
+  return invoke<WorkflowInstance>("start_workflow", { instanceId });
+}
+
+export async function getReadySteps(instanceId: string): Promise<string[]> {
+  return invoke<string[]>("get_ready_steps", { instanceId });
+}
+
+export async function advanceStep(
+  instanceId: string,
+  stepId: string,
+  newStatus: StepStatus,
+  workerId?: string,
+  outcome?: string,
+): Promise<WorkflowInstance> {
+  return invoke<WorkflowInstance>("advance_step", {
+    instanceId,
+    stepId,
+    newStatus,
+    workerId: workerId ?? null,
+    outcome: outcome ?? null,
+  });
+}
+
+export async function cancelWorkflow(
+  instanceId: string,
+): Promise<WorkflowInstance> {
+  return invoke<WorkflowInstance>("cancel_workflow", { instanceId });
 }

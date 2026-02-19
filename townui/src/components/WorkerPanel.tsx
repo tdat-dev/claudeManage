@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { WorkerInfo, CrewInfo, LogEntry } from "../lib/tauri";
 import { listen } from "@tauri-apps/api/event";
 import LogViewer from "./LogViewer";
+import { useSettings } from "../hooks/useSettings";
 
 interface WorkerPanelProps {
   workers: WorkerInfo[];
@@ -24,6 +25,7 @@ export default function WorkerPanel({
   onStop,
   onGetLogs,
 }: WorkerPanelProps) {
+  const { settings } = useSettings();
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showSpawn, setShowSpawn] = useState(false);
@@ -53,6 +55,12 @@ export default function WorkerPanel({
       setLogs([]);
     }
   }, [selectedWorkerId, onGetLogs]);
+
+  useEffect(() => {
+    if (settings?.default_cli) {
+      setAgentType(settings.default_cli);
+    }
+  }, [settings?.default_cli]);
 
   const handleSpawn = async () => {
     if (!crewId) return;

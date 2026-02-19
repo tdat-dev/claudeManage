@@ -13,11 +13,15 @@ import AuditTimeline from "./components/AuditTimeline";
 import ConvoyBoard from "./components/ConvoyBoard";
 import HookInbox from "./components/HookInbox";
 import HandoffCenter from "./components/HandoffCenter";
+import ActorPanel from "./components/ActorPanel";
+import WorkflowRunner from "./components/WorkflowRunner";
+import HealthDashboard from "./components/HealthDashboard";
 import { useRigs } from "./hooks/useRigs";
 import { useTasks } from "./hooks/useTasks";
 import { useSettings } from "./hooks/useSettings";
 import { useHooks } from "./hooks/useHooks";
 import { useHandoffs } from "./hooks/useHandoffs";
+import { useActors } from "./hooks/useActors";
 import { TaskItem, executeTask } from "./lib/tauri";
 import { AppLanguage, t } from "./lib/i18n";
 
@@ -53,6 +57,12 @@ export default function App() {
     addHandoff,
     accept,
   } = useHandoffs(selectedRig?.id ?? null);
+  const {
+    actors,
+    loading: actorsLoading,
+    addActor,
+    removeActor,
+  } = useActors(selectedRig?.id ?? null);
 
   const [activePage, setActivePage] = useState<NavPage>("rigs");
   const [showCreate, setShowCreate] = useState(false);
@@ -189,8 +199,8 @@ export default function App() {
         }
         return (
           <div className="flex flex-col h-full">
-            {/* Terms & Hook/Handoff row */}
-            <div className="shrink-0 space-y-3 px-4 pt-4 pb-2">
+            {/* Terms & Hook/Handoff row – capped height with scroll */}
+            <div className="shrink-0 max-h-[40vh] overflow-y-auto space-y-3 px-4 pt-4 pb-2">
               <div className="glass-card p-3">
                 <details className="group">
                   <summary className="text-xs font-semibold cursor-pointer list-none flex items-center gap-2">
@@ -220,6 +230,7 @@ export default function App() {
                   language={language}
                   hooks={hooks}
                   tasks={tasks}
+                  actors={actors}
                   loading={hooksLoading}
                   onCreateHook={async (actorId) => {
                     await addHook(actorId);
@@ -241,6 +252,7 @@ export default function App() {
                   language={language}
                   handoffs={handoffs}
                   tasks={tasks}
+                  actors={actors}
                   loading={handoffsLoading}
                   onCreate={async (
                     fromActorId,
@@ -271,28 +283,42 @@ export default function App() {
               <TaskBoard
                 language={language}
                 tasks={tasks}
+                hooks={hooks}
                 loading={tasksLoading}
                 onCreateClick={() => setShowTaskCreate(true)}
                 onEdit={editTask}
                 onDelete={removeTask}
                 onExecute={(task) => setExecuteTarget(task)}
-                onSling={async (taskId) => {
-                  if (hooks.length === 0) {
-                    alert("Create a hook first in Hook Inbox");
-                    return;
-                  }
-                  const defaultHookId = hooks[0].hook_id;
-                  const selectedHookId =
-                    prompt(
-                      `Hook ID to sling (default ${defaultHookId.slice(0, 8)}...)`,
-                      defaultHookId,
-                    ) || "";
-                  if (!selectedHookId) return;
-                  await slingNow(selectedHookId, taskId);
+                onSling={async (taskId, hookId) => {
+                  await slingNow(hookId, taskId);
                 }}
               />
             </div>
           </div>
+        );
+
+      case "actors":
+        if (!selectedRig) {
+          return (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center animate-fade-in">
+                <div className="w-14 h-14 rounded-2xl bg-town-surface flex items-center justify-center mx-auto mb-4">
+                  <span className="text-xl text-town-text-faint">👤</span>
+                </div>
+                <p className="text-sm text-town-text-muted">
+                  Select a rig first to manage actors
+                </p>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <ActorPanel
+            actors={actors}
+            loading={actorsLoading}
+            onAdd={addActor}
+            onDelete={removeActor}
+          />
         );
 
       case "workers":
@@ -305,6 +331,12 @@ export default function App() {
         return (
           <ConvoyBoard rigs={rigs} selectedRigId={selectedRig?.id ?? null} />
         );
+
+      case "workflows":
+        return <WorkflowRunner rigId={selectedRig?.id ?? ""} />;
+
+      case "health":
+        return <HealthDashboard rigId={selectedRig?.id ?? ""} />;
 
       case "audit":
         if (!selectedRig) {

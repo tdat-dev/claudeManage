@@ -7,6 +7,7 @@ import { useHooks } from "../hooks/useHooks";
 import { useHandoffs } from "../hooks/useHandoffs";
 import { useTasks } from "../hooks/useTasks";
 import { useSettings } from "../hooks/useSettings";
+import { useActors } from "../hooks/useActors";
 import { AppLanguage, t } from "../lib/i18n";
 import XtermTerminal from "./XtermTerminal";
 
@@ -59,7 +60,14 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
   const { addHandoff } = useHandoffs(rigId || null);
   const { tasks } = useTasks(rigId || null);
   const { settings } = useSettings();
+  const { actors } = useActors(rigId || null);
   const language: AppLanguage = settings?.language ?? "en";
+
+  // Helper: look up actor name by id
+  const actorName = (actorId: string | null) => {
+    if (!actorId) return null;
+    return actors.find((a) => a.actor_id === actorId)?.name ?? null;
+  };
 
   const [workerLogs, setWorkerLogs] = useState<Map<string, LogEntry[]>>(
     new Map(),
@@ -115,6 +123,12 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
       setCrewId(crews[0].id);
     }
   }, [crews, crewId]);
+
+  useEffect(() => {
+    if (settings?.default_cli) {
+      setAgentType(settings.default_cli);
+    }
+  }, [settings?.default_cli]);
 
   const handleSpawn = async () => {
     if (!crewId) return;
@@ -571,6 +585,15 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
                       <span className="text-xs font-bold uppercase tracking-widest truncate text-town-text">
                         {w.agent_type}
                       </span>
+                      {/* Actor identity */}
+                      {w.actor_id && actorName(w.actor_id) && (
+                        <span
+                          className="text-[10px] bg-town-accent/10 text-town-accent px-1.5 py-0.5 rounded-md font-medium truncate max-w-[100px]"
+                          title={`Actor: ${actorName(w.actor_id)}`}
+                        >
+                          👤 {actorName(w.actor_id)}
+                        </span>
+                      )}
                       {/* PID */}
                       {w.pid && (
                         <span className="text-[10px] text-town-text-faint font-mono shrink-0">

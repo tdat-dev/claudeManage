@@ -5,6 +5,7 @@ import {
   TemplateInfo,
   listTemplates,
   listCrews,
+  getSettings,
 } from "../lib/tauri";
 
 interface TaskExecuteDialogProps {
@@ -34,6 +35,14 @@ export default function TaskExecuteDialog({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    getSettings()
+      .then((s) => {
+        if (s.default_cli) {
+          setAgentType(s.default_cli);
+        }
+      })
+      .catch(() => {});
+
     listTemplates()
       .then(setTemplates)
       .catch(() => {});

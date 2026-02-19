@@ -120,7 +120,7 @@
 - [x] Tạo model `Actor` (`actor_id`, `name`, `role`, `agent_type`, `rig_id`, `created_at`)
 - [x] Tạo `models/actor.rs` + thêm vào `models/mod.rs`
 - [x] Liên kết Worker → Actor (actor_id ổn định, worker session tạm thời)
-- [ ] Hiển thị actor identity trong WorkerPanel/TerminalTabs
+- [x] Hiển thị actor identity trong WorkerPanel/TerminalTabs
 
 ---
 
@@ -128,22 +128,22 @@
 
 ### 4.1 Workflow Template (Formula)
 
-- [ ] Tạo model `WorkflowTemplate` (`template_id`, `name`, `description`, `steps: Vec<WorkflowStep>`, `variables`)
-- [ ] `WorkflowStep`: `step_id`, `title`, `command_template`, `dependencies: Vec<step_id>`, `acceptance_criteria`
-- [ ] CRUD API: `create_template`, `list_templates`, `get_template`
-- [ ] Persistence
+- [x] Tạo model `WorkflowTemplate` (`template_id`, `name`, `description`, `steps: Vec<WorkflowStep>`, `variables`)
+- [x] `WorkflowStep`: `step_id`, `title`, `command_template`, `dependencies: Vec<step_id>`, `acceptance_criteria`
+- [x] CRUD API: `create_template`, `list_templates`, `get_template`
+- [x] Persistence
 
 ### 4.2 Workflow Instance (Molecule)
 
-- [ ] Tạo model `WorkflowInstance` (`instance_id`, `template_id`, `convoy_id`, `variables_resolved`, `steps_status: Map<step_id, status>`, `created_at`)
-- [ ] API: `instantiate_workflow`, `advance_step`, `get_instance_status`
-- [ ] Dependency graph execution (chỉ chạy step khi dependencies done)
-- [ ] Retry/escalation policy cơ bản
+- [x] Tạo model `WorkflowInstance` (`instance_id`, `template_id`, `convoy_id`, `variables_resolved`, `steps_status: Map<step_id, status>`, `created_at`)
+- [x] API: `instantiate_workflow`, `advance_step`, `get_instance_status`
+- [x] Dependency graph execution (chỉ chạy step khi dependencies done)
+- [x] Retry/escalation policy cơ bản
 
 ### 4.3 Workflow (Frontend)
 
-- [ ] Component `WorkflowRunner.tsx` — DAG visualization + step status
-- [ ] Tích hợp instantiate từ template vào ConvoyBoard
+- [x] Component `WorkflowRunner.tsx` — DAG visualization + step status
+- [x] Tích hợp instantiate từ template vào ConvoyBoard
 
 ---
 
@@ -151,20 +151,20 @@
 
 ### 5.1 Health Monitoring (Backend)
 
-- [ ] Stuck task detection: task `in_progress` quá N phút không update → auto-escalate
-- [ ] Worker heartbeat: detect worker crash và update status
-- [ ] Queue health metrics: pending/blocked/stale counts per rig
+- [x] Stuck task detection: task `in_progress` quá N phút không update → auto-escalate
+- [x] Worker heartbeat: detect worker crash và update status
+- [x] Queue health metrics: pending/blocked/stale counts per rig
 
 ### 5.2 Health Dashboard (Frontend)
 
-- [ ] Component `HealthDashboard.tsx` — overview all rigs
-- [ ] Indicators: worker count, queue depth, stuck tasks, blocked items
-- [ ] Alert for stuck/crashed workers
+- [x] Component `HealthDashboard.tsx` — overview all rigs
+- [x] Indicators: worker count, queue depth, stuck tasks, blocked items
+- [x] Alert for stuck/crashed workers
 
 ### 5.3 Failure Center
 
-- [ ] Component `FailureCenter.tsx` — list blocked/escalated/failed tasks with reasons
-- [ ] Quick actions: reassign, resume, cancel, handoff
+- [x] Component `FailureCenter.tsx` — list blocked/escalated/failed tasks with reasons
+- [x] Quick actions: reassign, resume, cancel, handoff
 
 ---
 
@@ -187,4 +187,4 @@
 - [x] Có convoy/group để nhìn tiến độ mục tiêu lớn
 - [x] Có khả năng resume task sau restart
 - [x] Có audit trail đầy đủ cho mọi thay đổi trạng thái
-- [ ] Có cơ chế phát hiện stuck tasks tự động
+- [x] Có cơ chế phát hiện stuck tasks tự động

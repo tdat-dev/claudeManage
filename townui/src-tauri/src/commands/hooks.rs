@@ -30,6 +30,9 @@ fn resolve_hook_agent_type(hook: &Hook, state: &AppState) -> String {
         if settings.cli_paths.contains_key(&hook.attached_actor_id) {
             return hook.attached_actor_id.clone();
         }
+        if !settings.default_cli.trim().is_empty() {
+            return settings.default_cli.clone();
+        }
         if settings.cli_paths.contains_key("codex") {
             return "codex".to_string();
         }

@@ -224,3 +224,56 @@ pub fn remove_worktree(repo_path: &str, worktree_path: &str) -> Result<(), Strin
         ))
     }
 }
+
+pub fn delete_branch(repo_path: &str, branch_name: &str) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(["branch", "-D", branch_name])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git branch -D: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "git branch -D failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+/// Push a local branch to origin so it is published on the remote.
+pub fn push_branch(repo_path: &str, branch_name: &str) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(["push", "-u", "origin", branch_name])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git push: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "git push failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+/// Delete a branch from the remote (origin).
+pub fn delete_remote_branch(repo_path: &str, branch_name: &str) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(["push", "origin", "--delete", branch_name])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git push --delete: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "git push --delete failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}

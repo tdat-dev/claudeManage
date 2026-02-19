@@ -20,6 +20,7 @@ use crate::models::rig::Rig;
 use crate::models::settings::AppSettings;
 use crate::models::task::Task;
 use crate::models::worker::{LogEntry, Run, Worker};
+use crate::models::workflow::{WorkflowInstance, WorkflowTemplate};
 
 pub struct AppState {
     pub rigs: Mutex<Vec<Rig>>,
@@ -35,6 +36,8 @@ pub struct AppState {
     pub worker_writers: Mutex<HashMap<String, WorkerWriter>>,
     pub worker_pty_masters: Mutex<HashMap<String, PtyMasterHandle>>,
     pub settings: Mutex<AppSettings>,
+    pub workflow_templates: Mutex<Vec<WorkflowTemplate>>,
+    pub workflow_instances: Mutex<Vec<WorkflowInstance>>,
     pub town_dir: PathBuf,
 }
 
@@ -60,6 +63,8 @@ impl AppState {
         let runs: Vec<Run> = Self::load_json_vec(&town_dir, "runs.json");
 
         let settings: AppSettings = Self::load_json_obj(&town_dir, "settings.json");
+        let workflow_templates: Vec<WorkflowTemplate> = Self::load_json_vec(&town_dir, "workflow_templates.json");
+        let workflow_instances: Vec<WorkflowInstance> = Self::load_json_vec(&town_dir, "workflow_instances.json");
 
         Self {
             rigs: Mutex::new(rigs),
@@ -75,6 +80,8 @@ impl AppState {
             worker_writers: Mutex::new(HashMap::new()),
             worker_pty_masters: Mutex::new(HashMap::new()),
             settings: Mutex::new(settings),
+            workflow_templates: Mutex::new(workflow_templates),
+            workflow_instances: Mutex::new(workflow_instances),
             town_dir,
         }
     }
@@ -143,6 +150,14 @@ impl AppState {
 
     pub fn save_settings(&self, settings: &AppSettings) {
         self.save_json(settings, "settings.json");
+    }
+
+    pub fn save_workflow_templates(&self, templates: &[WorkflowTemplate]) {
+        self.save_json(templates, "workflow_templates.json");
+    }
+
+    pub fn save_workflow_instances(&self, instances: &[WorkflowInstance]) {
+        self.save_json(instances, "workflow_instances.json");
     }
 
     pub fn worktrees_dir(&self) -> PathBuf {

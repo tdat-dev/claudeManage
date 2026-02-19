@@ -5,7 +5,10 @@ export type NavPage =
   | "tasks"
   | "workers"
   | "runs"
+  | "actors"
   | "convoys"
+  | "workflows"
+  | "health"
   | "audit"
   | "settings";
 
@@ -94,6 +97,27 @@ const navItems: { label: string; page: NavPage; icon: JSX.Element }[] = [
     ),
   },
   {
+    label: "Actors",
+    page: "actors",
+    icon: (
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 00-3-3.87" />
+        <path d="M16 3.13a4 4 0 010 7.75" />
+      </svg>
+    ),
+  },
+  {
     label: "Convoys",
     page: "convoys",
     icon: (
@@ -111,6 +135,43 @@ const navItems: { label: string; page: NavPage; icon: JSX.Element }[] = [
         <path d="M16 8h4l3 4v5h-7V8z" />
         <circle cx="5.5" cy="18.5" r="2.5" />
         <circle cx="18.5" cy="18.5" r="2.5" />
+      </svg>
+    ),
+  },
+  {
+    label: "Workflows",
+    page: "workflows",
+    icon: (
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="12" cy="12" r="3" />
+        <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
+      </svg>
+    ),
+  },
+  {
+    label: "Health",
+    page: "health",
+    icon: (
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
       </svg>
     ),
   },

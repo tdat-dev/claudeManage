@@ -12,13 +12,41 @@ use crate::state::AppState;
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+fn normalize_settings(mut settings: AppSettings) -> AppSettings {
+    let defaults = AppSettings::default();
+
+    // Keep user overrides, but backfill any missing known CLI keys.
+    for (key, value) in defaults.cli_paths {
+        settings.cli_paths.entry(key).or_insert(value);
+    }
+
+    if settings.default_template.trim().is_empty() {
+        settings.default_template = defaults.default_template;
+    }
+
+    if settings.default_cli.trim().is_empty() || !settings.cli_paths.contains_key(&settings.default_cli) {
+        settings.default_cli = defaults.default_cli;
+    }
+
+    if settings.language.trim().is_empty() {
+        settings.language = defaults.language;
+    }
+
+    settings
+}
+
 #[tauri::command]
 pub fn get_settings(state: State<AppState>) -> AppSettings {
-    state.settings.lock().unwrap().clone()
+    let mut current = state.settings.lock().unwrap();
+    let normalized = normalize_settings(current.clone());
+    *current = normalized.clone();
+    state.save_settings(&current);
+    normalized
 }
 
 #[tauri::command]
 pub fn update_settings(settings: AppSettings, state: State<AppState>) {
+    let settings = normalize_settings(settings);
     let mut current = state.settings.lock().unwrap();
     *current = settings.clone();
     state.save_settings(&current);
