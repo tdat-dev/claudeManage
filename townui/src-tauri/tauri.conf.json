@@ -25,9 +25,5 @@
       "csp": null
     }
   },
-  "plugins": {
-    "dialog": {
-      "open": true
-    }
-  }
+  "plugins": {}
 }
