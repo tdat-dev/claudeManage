@@ -5,6 +5,7 @@ pub mod crews;
 pub mod handoffs;
 pub mod hooks;
 pub mod rigs;
+pub mod terminal;
 pub mod seed;
 pub mod settings;
 pub mod tasks;

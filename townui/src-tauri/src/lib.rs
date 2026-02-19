@@ -93,6 +93,7 @@ pub fn run() {
             // Seed
             commands::seed::seed_workflow_templates,
             commands::seed::get_seed_info,
+            commands::terminal::run_rig_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running TownUI");

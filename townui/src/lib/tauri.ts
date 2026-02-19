@@ -13,6 +13,14 @@ export interface RigInfo {
   is_git_repo: boolean;
 }
 
+export interface TerminalCommandResult {
+  command: string;
+  stdout: string;
+  stderr: string;
+  exit_code: number;
+  duration_ms: number;
+}
+
 export async function listRigs(): Promise<RigInfo[]> {
   return invoke<RigInfo[]>("list_rigs");
 }
@@ -766,4 +774,11 @@ export async function getSeedInfo(): Promise<SeedInfo> {
 
 export async function seedWorkflowTemplates(): Promise<string[]> {
   return invoke<string[]>("seed_workflow_templates");
+}
+
+export async function runRigCommand(
+  rigId: string,
+  command: string,
+): Promise<TerminalCommandResult> {
+  return invoke<TerminalCommandResult>("run_rig_command", { rigId, command });
 }

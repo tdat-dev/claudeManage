@@ -132,3 +132,32 @@ target/
 # OS
 .DS_Store
 Thumbs.db
+
+
+# Frontend build/cache
+dist/
+.vite/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local env files
+.env
+.env.local
+.env.*.local
+
+# Tauri / Rust artifacts
+townui/src-tauri/target/
+townui/src-tauri/target-*/
+townui/src-tauri/gen/
+townui/src-tauri/.rustc_info.json
+townui/src-tauri/.cargo-lock
+
+# OS files
+.DS_Store
+Thumbs.db
