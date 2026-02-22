@@ -1,10 +1,8 @@
 import { useState } from "react";
-import Layout, { NavView } from "./components/Layout";
 import Layout, { NavPage } from "./components/Layout";
 import RigList from "./components/RigList";
 import RigDetails from "./components/RigDetails";
 import RigCreateDialog from "./components/RigCreateDialog";
-import RigTerminal from "./components/RigTerminal";
 import TaskBoard from "./components/TaskBoard";
 import TaskCreateDialog from "./components/TaskCreateDialog";
 import TaskExecuteDialog from "./components/TaskExecuteDialog";
@@ -24,16 +22,17 @@ import { useSettings } from "./hooks/useSettings";
 import { useHooks } from "./hooks/useHooks";
 import { useHandoffs } from "./hooks/useHandoffs";
 import { useActors } from "./hooks/useActors";
+import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { TaskItem, executeTask } from "./lib/tauri";
 import { AppLanguage, t } from "./lib/i18n";
 
 export default function App() {
-  const { rigs, selectedRig, loading, error, addRig, selectRig, removeRig } = useRigs();
   const { rigs, selectedRig, loading, error, addRig, selectRig, removeRig } =
     useRigs();
   const {
     tasks,
     loading: tasksLoading,
+    refresh: refreshTasks,
     addTask,
     editTask,
     removeTask,
@@ -69,10 +68,24 @@ export default function App() {
 
   const [activePage, setActivePage] = useState<NavPage>("rigs");
   const [showCreate, setShowCreate] = useState(false);
-  const [activeView, setActiveView] = useState<NavView>("rigs");
   const [showTaskCreate, setShowTaskCreate] = useState(false);
   const [executeTarget, setExecuteTarget] = useState<TaskItem | null>(null);
   const language: AppLanguage = settings?.language ?? "en";
+
+  // Plumb global hotkeys based on current page
+  useGlobalShortcuts(
+    () => {
+      // Ctrl+N
+      if (activePage === "rigs") setShowCreate(true);
+      else if (activePage === "tasks" && selectedRig) setShowTaskCreate(true);
+      // Other pages could have their own logic
+    },
+    () => {
+      // Ctrl+R
+      if (activePage === "tasks") refreshTasks();
+      // We rely on standard browser reload for rigs usually, but we could hook rig refresh here
+    },
+  );
 
   const renderContent = () => {
     switch (activePage) {
@@ -384,65 +397,6 @@ export default function App() {
     }
   };
 
-  const renderMainContent = () => {
-    if (loading) {
-      return (
-        <div className="flex items-center justify-center h-full text-town-text-muted">
-          Loading...
-        </div>
-      );
-    }
-
-    if (error) {
-      return (
-        <div className="p-6">
-          <div className="bg-town-danger/10 border border-town-danger/30 rounded-lg px-4 py-3 text-town-danger text-sm">
-            {error}
-          </div>
-        </div>
-      );
-    }
-
-    if (activeView === "runs") {
-      return <RigTerminal rig={selectedRig} />;
-    }
-
-    if (selectedRig) {
-      return <RigDetails rig={selectedRig} onDelete={removeRig} onRefresh={() => selectRig(selectedRig.id)} />;
-    }
-
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-town-text-muted mb-2">Welcome to TownUI</h2>
-          <p className="text-town-text-muted/70 text-sm mb-4">
-            Select a rig from the sidebar or add a new one to get started.
-          </p>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="px-4 py-2 bg-town-accent hover:bg-town-accent-hover rounded text-sm font-medium transition-colors"
-          >
-            Add Rig
-          </button>
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <Layout
-      activeView={activeView}
-      onChangeView={setActiveView}
-      sidebar={
-        <RigList
-          rigs={rigs}
-          selectedId={selectedRig?.id ?? null}
-          onSelect={selectRig}
-          onAddClick={() => setShowCreate(true)}
-        />
-      }
-    >
-      {renderMainContent()}
   return (
     <Layout
       activePage={activePage}

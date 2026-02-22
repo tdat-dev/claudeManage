@@ -19,39 +19,25 @@ pub fn get_current_branch(path: &str) -> Option<String> {
     }
 }
 
-pub fn get_short_status(path: &str) -> Option<String> {
-    let output = Command::new("git")
-        .args(["status", "--short"])
-        .current_dir(path)
-        .output()
-        .ok()?;
-
-    if output.status.success() {
-        let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if status.is_empty() {
-            Some("Clean".to_string())
-        } else {
-            let lines: Vec<&str> = status.lines().collect();
-            Some(format!("{} changed file(s)", lines.len()))
-        }
-    } else {
-        None
-    }
-}
-
-pub fn get_changed_file_count(path: &str) -> u32 {
+pub fn get_status_info(path: &str) -> (Option<String>, u32) {
     let output = Command::new("git")
         .args(["status", "--short"])
         .current_dir(path)
         .output();
 
-    match output {
-        Ok(o) if o.status.success() => {
-            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            if s.is_empty() { 0 } else { s.lines().count() as u32 }
+    if let Ok(output) = output {
+        if output.status.success() {
+            let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if status.is_empty() {
+                return (Some("Clean".to_string()), 0);
+            } else {
+                let count = status.lines().count();
+                return (Some(format!("{} changed file(s)", count)), count as u32);
+            }
         }
-        _ => 0,
     }
+    
+    (None, 0)
 }
 
 pub fn list_branches(path: &str) -> Result<Vec<String>, String> {

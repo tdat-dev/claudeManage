@@ -1,5 +1,5 @@
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::models::audit::{AuditEvent, AuditEventType};
 use crate::models::task::{Task, TaskPriority, TaskStatus, TaskUpdateRequest};
@@ -21,6 +21,7 @@ pub fn create_task(
     priority: TaskPriority,
     acceptance_criteria: Option<String>,
     state: State<AppState>,
+    app: AppHandle,
 ) -> Task {
     let task = Task::new(rig_id.clone(), title, description, tags, priority, acceptance_criteria);
     let mut tasks = state.tasks.lock().unwrap();
@@ -40,6 +41,7 @@ pub fn create_task(
         payload,
     ));
 
+    let _ = app.emit("data-changed", "");
     task
 }
 
@@ -48,6 +50,7 @@ pub fn update_task(
     id: String,
     updates: TaskUpdateRequest,
     state: State<AppState>,
+    app: AppHandle,
 ) -> Result<Task, String> {
     let mut tasks = state.tasks.lock().unwrap();
     let task = tasks
@@ -79,11 +82,12 @@ pub fn update_task(
         payload,
     ));
 
+    let _ = app.emit("data-changed", "");
     Ok(updated)
 }
 
 #[tauri::command]
-pub fn delete_task(id: String, state: State<AppState>) -> Result<(), String> {
+pub fn delete_task(id: String, state: State<AppState>, app: AppHandle) -> Result<(), String> {
     let mut tasks = state.tasks.lock().unwrap();
     let task = tasks.iter().find(|t| t.id == id).cloned();
     let len_before = tasks.len();
@@ -105,6 +109,7 @@ pub fn delete_task(id: String, state: State<AppState>) -> Result<(), String> {
         ));
     }
 
+    let _ = app.emit("data-changed", "");
     Ok(())
 }
 
@@ -188,7 +193,7 @@ pub fn get_health_metrics(rig_id: String, stuck_threshold_minutes: Option<i64>, 
 
 /// Auto-escalate stuck tasks (in_progress for too long)
 #[tauri::command]
-pub fn escalate_stuck_tasks(rig_id: String, threshold_minutes: Option<i64>, state: State<AppState>) -> Vec<Task> {
+pub fn escalate_stuck_tasks(rig_id: String, threshold_minutes: Option<i64>, state: State<AppState>, app: AppHandle) -> Vec<Task> {
     let threshold = threshold_minutes.unwrap_or(30);
     let now = chrono::Utc::now();
     let mut tasks = state.tasks.lock().unwrap();
@@ -228,5 +233,8 @@ pub fn escalate_stuck_tasks(rig_id: String, threshold_minutes: Option<i64>, stat
         state.save_tasks(&tasks);
     }
 
+    if !escalated.is_empty() {
+        let _ = app.emit("data-changed", "");
+    }
     escalated
 }

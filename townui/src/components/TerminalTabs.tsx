@@ -10,6 +10,7 @@ import { useSettings } from "../hooks/useSettings";
 import { useActors } from "../hooks/useActors";
 import { AppLanguage, t } from "../lib/i18n";
 import XtermTerminal from "./XtermTerminal";
+import { SkeletonGroup, BlockSkeleton } from "./Skeleton";
 
 interface TerminalTabsProps {
   rigId: string;
@@ -181,9 +182,18 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full gap-3 animate-fade-in">
-        <div className="w-5 h-5 border-2 border-town-accent/30 border-t-town-accent rounded-full animate-spin" />
-        <span className="text-sm text-town-text-muted">Loading workers...</span>
+      <div className="h-full flex flex-col p-6 animate-fade-in">
+        <BlockSkeleton className="h-10 w-48 mb-6" />
+        <div className="flex gap-4 h-full">
+          <SkeletonGroup count={2}>
+            <div className="flex-1 bg-town-surface/40 rounded-xl border border-town-border/50 p-4">
+              <BlockSkeleton className="h-6 w-32 mb-4" />
+              <BlockSkeleton className="h-4 w-full mb-2" />
+              <BlockSkeleton className="h-4 w-5/6 mb-2" />
+              <BlockSkeleton className="h-4 w-4/6" />
+            </div>
+          </SkeletonGroup>
+        </div>
       </div>
     );
   }
@@ -320,11 +330,10 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
               <button
                 key={n}
                 onClick={() => setColumns(n)}
-                className={`p-1.5 rounded-md transition-all duration-200 ${
-                  columns === n
-                    ? "bg-town-accent/15 text-town-accent shadow-sm"
-                    : "text-town-text-muted hover:text-town-text hover:bg-town-surface-hover"
-                }`}
+                className={`p-1.5 rounded-md transition-all duration-200 ${columns === n
+                  ? "bg-town-accent/15 text-town-accent shadow-sm"
+                  : "text-town-text-muted hover:text-town-text hover:bg-town-surface-hover"
+                  }`}
                 title={`${n} column${n > 1 ? "s" : ""}`}
               >
                 {colIcons[i]}
@@ -334,11 +343,10 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
 
           <button
             onClick={() => setShowSpawn(!showSpawn)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-              showSpawn
-                ? "bg-town-surface border border-town-border text-town-text-muted"
-                : "btn-primary"
-            }`}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${showSpawn
+              ? "bg-town-surface border border-town-border text-town-text-muted"
+              : "btn-primary"
+              }`}
           >
             <svg
               width="14"
@@ -566,13 +574,12 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
               return (
                 <div
                   key={w.id}
-                  className={`group flex h-full min-h-0 flex-col rounded-xl overflow-hidden border transition-all duration-300 ${
-                    w.status === "running"
-                      ? "border-town-success/25 shadow-[0_0_20px_-6px_rgba(16,185,129,0.15)]"
-                      : w.status === "failed"
-                        ? "border-town-danger/25"
-                        : "border-town-border/60 hover:border-town-border"
-                  } bg-town-bg`}
+                  className={`group flex h-full min-h-0 flex-col rounded-xl overflow-hidden border transition-all duration-300 ${w.status === "running"
+                    ? "border-town-success/25 shadow-[0_0_20px_-6px_rgba(16,185,129,0.15)]"
+                    : w.status === "failed"
+                      ? "border-town-danger/25"
+                      : "border-town-border/60 hover:border-town-border"
+                    } bg-town-bg`}
                 >
                   {/* Terminal header — faux title bar */}
                   <div className="flex items-center justify-between px-3 py-2 bg-town-surface/80 border-b border-town-border/50 shrink-0">

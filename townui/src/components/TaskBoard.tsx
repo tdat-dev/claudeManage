@@ -330,6 +330,7 @@ export default function TaskBoard({
           </div>
           <button
             onClick={onCreateClick}
+            title="New Task (Ctrl+N)"
             className="btn-primary !py-2 !px-4 !text-sm inline-flex items-center gap-2"
           >
             <svg
@@ -398,11 +399,10 @@ export default function TaskBoard({
                 <button
                   key={p}
                   onClick={() => setFilterPriority(p)}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
-                    filterPriority === p
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${filterPriority === p
                       ? "bg-town-accent/20 text-town-accent border border-town-accent/30"
                       : "text-town-text-faint hover:text-town-text-muted hover:bg-town-surface-hover border border-transparent"
-                  }`}
+                    }`}
                 >
                   {p === "all"
                     ? "All"
@@ -461,11 +461,10 @@ export default function TaskBoard({
           return (
             <div
               key={col.id}
-              className={`flex flex-col flex-1 min-w-[240px] max-w-[360px] rounded-xl border transition-all duration-200 ${
-                isDropTarget
+              className={`flex flex-col flex-1 min-w-[240px] max-w-[360px] rounded-xl border transition-all duration-200 ${isDropTarget
                   ? `${col.borderAccent} bg-town-accent/[0.03] shadow-[0_0_24px_rgba(124,92,252,0.08)]`
                   : "border-town-border/25 bg-town-bg/30"
-              }`}
+                }`}
               onDragOver={(e) => handleDragOver(e, col.id)}
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, col)}
@@ -635,12 +634,11 @@ function TaskCard({
       onClick={onClick}
       className={`group relative rounded-lg border p-2.5 cursor-grab active:cursor-grabbing select-none
         transition-all duration-150
-        ${
-          isDragging
-            ? "opacity-30 scale-95 border-town-accent/40 bg-town-accent/5 rotate-1"
-            : isSelected
-              ? "bg-town-accent/8 border-town-accent/40 shadow-[0_0_12px_rgba(124,92,252,0.1)]"
-              : "bg-town-surface/50 border-town-border/30 hover:border-town-border/50 hover:bg-town-surface/80 hover:shadow-sm"
+        ${isDragging
+          ? "opacity-30 scale-95 border-town-accent/40 bg-town-accent/5 rotate-1"
+          : isSelected
+            ? "bg-town-accent/8 border-town-accent/40 shadow-[0_0_12px_rgba(124,92,252,0.1)]"
+            : "bg-town-surface/50 border-town-border/30 hover:border-town-border/50 hover:bg-town-surface/80 hover:shadow-sm"
         }`}
     >
       {/* Priority bar (left edge) */}
@@ -909,11 +907,10 @@ function TaskDetailPanel({
                           onEdit(task.id, { status: s });
                         }
                       }}
-                      className={`px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
-                        isActive
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${isActive
                           ? `${col.headerBg} ${col.accentColor} ${col.borderAccent}`
                           : "border-town-border/20 text-town-text-faint hover:text-town-text-muted hover:bg-town-surface-hover"
-                      }`}
+                        }`}
                     >
                       {col.icon} {col.label}
                     </button>
@@ -953,11 +950,10 @@ function TaskDetailPanel({
                     <button
                       key={p}
                       onClick={() => onEdit(task.id, { priority: p })}
-                      className={`px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
-                        task.priority === p
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${task.priority === p
                           ? `${pc.bgColor} ${pc.color}`
                           : "border-town-border/20 text-town-text-faint hover:text-town-text-muted hover:bg-town-surface-hover"
-                      }`}
+                        }`}
                     >
                       {pc.icon} {pc.label}
                     </button>

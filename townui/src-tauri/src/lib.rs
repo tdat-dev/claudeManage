@@ -4,11 +4,29 @@ pub mod models;
 pub mod state;
 pub mod templates;
 
+use models::worker::WorkerStatusEnum;
 use state::AppState;
+use tauri::{Manager, RunEvent};
+
+/// Kill a process tree by PID (used during shutdown cleanup).
+fn kill_pid(pid: u32) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .output();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = std::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .output();
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
@@ -95,6 +113,35 @@ pub fn run() {
             commands::seed::get_seed_info,
             commands::terminal::run_rig_command,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running TownUI");
+        .build(tauri::generate_context!())
+        .expect("error while building TownUI");
+
+    app.run(|app_handle, event| {
+        if let RunEvent::ExitRequested { .. } = &event {
+            // Kill all running worker processes on app exit
+            let state = app_handle.state::<AppState>();
+            if let Ok(workers) = state.workers.lock() {
+                for worker in workers.iter() {
+                    if worker.status == WorkerStatusEnum::Running {
+                        if let Some(pid) = worker.pid {
+                            eprintln!("[shutdown] Killing worker {} (pid {})", worker.id, pid);
+                            kill_pid(pid);
+                        }
+                    }
+                }
+            }
+
+            // Flush any in-memory logs to disk
+            let drained_logs = {
+                if let Ok(mut logs) = state.worker_logs.lock() {
+                    logs.drain().collect::<Vec<(String, Vec<_>)>>()
+                } else {
+                    Vec::new()
+                }
+            };
+            for (worker_id, entries) in drained_logs {
+                state.save_log(&worker_id, &entries);
+            }
+        }
+    });
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { CrewInfo, listCrews, createCrew, deleteCrew, listBranches } from "../lib/tauri";
+import { listen } from "@tauri-apps/api/event";
 
 export function useCrews(rigId: string | null) {
   const [crews, setCrews] = useState<CrewInfo[]>([]);
@@ -31,13 +32,19 @@ export function useCrews(rigId: string | null) {
 
   useEffect(() => {
     refresh();
+    const unlisten = listen("data-changed", () => {
+      refresh();
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, [refresh]);
 
-  const addCrew = useCallback(async (name: string, baseBranch: string) => {
+  const addCrew = useCallback(async (name: string, baseBranch: string, pushToRemote: boolean = false) => {
     if (!rigId) return;
     try {
       setError(null);
-      const crew = await createCrew(rigId, name, baseBranch);
+      const crew = await createCrew(rigId, name, baseBranch, pushToRemote);
       setCrews((prev) => [...prev, crew]);
       return crew;
     } catch (e) {

@@ -1,25 +1,40 @@
 use std::path::Path;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::git;
 use crate::models::rig::{Rig, RigInfo};
 use crate::state::AppState;
 
 #[tauri::command]
-pub fn list_rigs(state: State<AppState>) -> Vec<RigInfo> {
-    let rigs = state.rigs.lock().unwrap();
-    rigs.iter()
-        .map(|r| {
+pub async fn list_rigs(state: State<'_, AppState>) -> Result<Vec<RigInfo>, String> {
+    let rigs = {
+        let rigs_guard = state.rigs.lock().unwrap();
+        rigs_guard.clone()
+    };
+
+    let mut handles = vec![];
+    for r in rigs {
+        handles.push(tokio::task::spawn_blocking(move || {
             let is_git = git::is_git_repo(&r.path);
             let branch = if is_git { git::get_current_branch(&r.path) } else { None };
-            let status = if is_git { git::get_short_status(&r.path) } else { None };
+            let (status, _) = if is_git { git::get_status_info(&r.path) } else { (None, 0) };
             r.to_info(branch, status, is_git)
-        })
-        .collect()
+        }));
+    }
+
+    let mut results = vec![];
+    for handle in handles {
+        match handle.await {
+            Ok(info) => results.push(info),
+            Err(e) => return Err(format!("Task failed: {}", e)),
+        }
+    }
+
+    Ok(results)
 }
 
 #[tauri::command]
-pub fn create_rig(path: String, state: State<AppState>) -> Result<RigInfo, String> {
+pub fn create_rig(path: String, state: State<AppState>, app: AppHandle) -> Result<RigInfo, String> {
     let p = Path::new(&path);
     if !p.exists() {
         return Err("Path does not exist".to_string());
@@ -48,12 +63,13 @@ pub fn create_rig(path: String, state: State<AppState>) -> Result<RigInfo, Strin
     }
 
     let branch = git::get_current_branch(&path);
-    let status = git::get_short_status(&path);
+    let (status, _) = git::get_status_info(&path);
     let info = rig.to_info(branch, status, true);
 
     rigs.push(rig);
     state.save_rigs(&rigs);
 
+    let _ = app.emit("data-changed", "");
     Ok(info)
 }
 
@@ -73,7 +89,7 @@ pub fn get_rig(id: String, state: State<AppState>) -> Result<RigInfo, String> {
 
     let is_git = git::is_git_repo(&path);
     let branch = if is_git { git::get_current_branch(&path) } else { None };
-    let status = if is_git { git::get_short_status(&path) } else { None };
+    let (status, _) = if is_git { git::get_status_info(&path) } else { (None, 0) };
 
     let rig = rigs
         .iter()
@@ -84,7 +100,7 @@ pub fn get_rig(id: String, state: State<AppState>) -> Result<RigInfo, String> {
 }
 
 #[tauri::command]
-pub fn delete_rig(id: String, state: State<AppState>) -> Result<(), String> {
+pub fn delete_rig(id: String, state: State<AppState>, app: AppHandle) -> Result<(), String> {
     let mut rigs = state.rigs.lock().unwrap();
     let len_before = rigs.len();
     rigs.retain(|r| r.id != id);
@@ -94,5 +110,6 @@ pub fn delete_rig(id: String, state: State<AppState>) -> Result<(), String> {
     }
 
     state.save_rigs(&rigs);
+    let _ = app.emit("data-changed", "");
     Ok(())
 }

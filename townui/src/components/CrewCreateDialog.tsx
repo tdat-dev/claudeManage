@@ -4,7 +4,7 @@ import { CrewPreset, getCrewPresets } from "../lib/tauri";
 interface CrewCreateDialogProps {
   branches: string[];
   existingCrewNames: string[];
-  onCreated: (name: string, baseBranch: string) => Promise<void>;
+  onCreated: (name: string, baseBranch: string, pushToRemote: boolean) => Promise<void>;
   onClose: () => void;
 }
 
@@ -21,6 +21,7 @@ export default function CrewCreateDialog({
   );
   const [name, setName] = useState("");
   const [baseBranch, setBaseBranch] = useState(branches[0] || "main");
+  const [pushToRemote, setPushToRemote] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
@@ -51,7 +52,7 @@ export default function CrewCreateDialog({
         setProgress(
           `Creating ${preset.name}... (${completed + 1}/${selected.length})`,
         );
-        await onCreated(preset.name, baseBranch);
+        await onCreated(preset.name, baseBranch, pushToRemote);
         completed++;
       }
       onClose();
@@ -70,7 +71,7 @@ export default function CrewCreateDialog({
     setCreating(true);
     setError(null);
     try {
-      await onCreated(name.trim(), baseBranch);
+      await onCreated(name.trim(), baseBranch, pushToRemote);
       onClose();
     } catch (e) {
       setError(String(e));
@@ -117,21 +118,19 @@ export default function CrewCreateDialog({
           <div className="flex gap-1 bg-town-bg/60 rounded-lg p-1 border border-town-border/30">
             <button
               onClick={() => setMode("presets")}
-              className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${
-                mode === "presets"
+              className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${mode === "presets"
                   ? "bg-town-accent text-white shadow-sm"
                   : "text-town-text-muted hover:text-town-text"
-              }`}
+                }`}
             >
               <span className="mr-1.5">🏢</span> Company Presets
             </button>
             <button
               onClick={() => setMode("custom")}
-              className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${
-                mode === "custom"
+              className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${mode === "custom"
                   ? "bg-town-accent text-white shadow-sm"
                   : "text-town-text-muted hover:text-town-text"
-              }`}
+                }`}
             >
               <span className="mr-1.5">✏️</span> Custom Crew
             </button>
@@ -183,13 +182,12 @@ export default function CrewCreateDialog({
                         key={preset.key}
                         disabled={alreadyExists || creating}
                         onClick={() => togglePreset(preset.key)}
-                        className={`relative text-left p-3 rounded-xl border-2 transition-all duration-200 ${
-                          alreadyExists
+                        className={`relative text-left p-3 rounded-xl border-2 transition-all duration-200 ${alreadyExists
                             ? "opacity-40 cursor-not-allowed border-town-border/20 bg-town-bg/30"
                             : isSelected
                               ? "border-town-accent bg-town-accent/10 shadow-glow-sm"
                               : "border-town-border/30 bg-town-bg/40 hover:border-town-border-light/50 hover:bg-town-bg/60"
-                        }`}
+                          }`}
                       >
                         {alreadyExists && (
                           <span className="absolute top-2 right-2 text-[10px] bg-town-text-faint/20 text-town-text-faint px-1.5 py-0.5 rounded-full">
@@ -268,6 +266,37 @@ export default function CrewCreateDialog({
               </div>
             </div>
           )}
+
+          {/* Optional Push Toggle */}
+          <div className="mt-5 mb-2 pl-1">
+            <label className="flex items-center gap-2.5 cursor-pointer group">
+              <div className="relative flex items-center justify-center">
+                <input
+                  type="checkbox"
+                  checked={pushToRemote}
+                  onChange={(e) => setPushToRemote(e.target.checked)}
+                  className="peer sr-only"
+                />
+                <div className="w-5 h-5 rounded border border-town-border bg-town-surface-hover peer-checked:bg-town-accent peer-checked:border-town-accent transition-all duration-200"></div>
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="white"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="absolute opacity-0 peer-checked:opacity-100 transition-opacity duration-200 pointer-events-none"
+                >
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </div>
+              <span className="text-sm font-medium text-town-text-muted group-hover:text-town-text transition-colors">
+                Push branch to remote (origin)
+              </span>
+            </label>
+          </div>
 
           {error && (
             <div className="flex items-start gap-2.5 p-3 mt-3 bg-town-danger-soft border border-town-danger/20 rounded-lg animate-slide-up">

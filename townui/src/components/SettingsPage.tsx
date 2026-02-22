@@ -8,6 +8,7 @@ import {
   TemplateInfo,
 } from "../lib/tauri";
 import { t } from "../lib/i18n";
+import { shortenPathForCli } from "../lib/path";
 
 interface SettingsPageProps {
   settings: AppSettings | null;
@@ -31,6 +32,7 @@ export default function SettingsPage({
   const [seeding, setSeeding] = useState(false);
   const [seedResult, setSeedResult] = useState<string[] | null>(null);
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
+  const [editingCliKey, setEditingCliKey] = useState<string | null>(null);
 
   useEffect(() => {
     getSeedInfo()
@@ -195,8 +197,17 @@ export default function SettingsPage({
                   <div className="flex-1 relative">
                     <input
                       type="text"
-                      value={value}
+                      value={
+                        editingCliKey === key
+                          ? value
+                          : shortenPathForCli(value, 56)
+                      }
                       onChange={(e) => updateCliPath(key, e.target.value)}
+                      onFocus={() => setEditingCliKey(key)}
+                      onBlur={() =>
+                        setEditingCliKey((prev) => (prev === key ? null : prev))
+                      }
+                      title={value}
                       className="input-base font-mono text-xs pr-20"
                     />
                     <button

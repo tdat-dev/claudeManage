@@ -263,7 +263,15 @@ fn spawn_worker_inner(
     // Build the full command string to send into the interactive shell
     let prompt_for_shell = sanitize_prompt_for_shell(&initial_prompt);
     let agent_command = match agent_type.as_str() {
-        "claude" => format!("{} --print \"{}\"", cli_path, prompt_for_shell),
+        "claude" => {
+            if initial_prompt.is_empty() {
+                cli_path.clone()
+            } else {
+                let prompt_path = std::path::Path::new(&cwd).join(".townui_prompt.txt");
+                let _ = std::fs::write(&prompt_path, &initial_prompt);
+                format!("{} --print < .townui_prompt.txt", cli_path)
+            }
+        },
         "codex" => {
             if initial_prompt.is_empty() {
                 cli_path.clone()
@@ -426,12 +434,7 @@ fn spawn_worker_inner(
                                     stream: "stdout".to_string(),
                                     line: clean_line,
                                 };
-                                {
-                                    let mut logs = state.worker_logs.lock().unwrap();
-                                    if let Some(entries) = logs.get_mut(&worker_id_reader) {
-                                        entries.push(entry.clone());
-                                    }
-                                }
+                                state.append_worker_log(&worker_id_reader, entry.clone());
                                 if let Err(e) = app_reader.emit("worker-log", (&worker_id_reader, &entry)) {
                                     eprintln!("Failed to emit worker-log: {}", e);
                                 }
@@ -452,10 +455,7 @@ fn spawn_worker_inner(
                         stream: "stdout".to_string(),
                         line: clean,
                     };
-                    let mut logs = state.worker_logs.lock().unwrap();
-                    if let Some(entries) = logs.get_mut(&worker_id_reader) {
-                        entries.push(entry);
-                    }
+                    state.append_worker_log(&worker_id_reader, entry);
                 }
             }
         })
@@ -502,12 +502,7 @@ fn spawn_worker_inner(
                     line: failure_line,
                 };
 
-                {
-                    let mut logs = state.worker_logs.lock().unwrap();
-                    if let Some(entries) = logs.get_mut(&worker_id_wait) {
-                        entries.push(failure_entry.clone());
-                    }
-                }
+                state.append_worker_log(&worker_id_wait, failure_entry.clone());
 
                 if let Err(e) = app_wait.emit("worker-log", (&worker_id_wait, &failure_entry)) {
                     eprintln!("Failed to emit worker-log failure entry: {}", e);
@@ -629,11 +624,15 @@ pub fn spawn_worker(
     initial_prompt: String,
     app: AppHandle,
 ) -> Result<Worker, String> {
-    spawn_worker_inner(crew_id, agent_type, initial_prompt, app)
+    let res = spawn_worker_inner(crew_id, agent_type, initial_prompt, app.clone());
+    if res.is_ok() {
+        let _ = app.emit("data-changed", "");
+    }
+    res
 }
 
 #[tauri::command]
-pub fn stop_worker(id: String, state: State<AppState>) -> Result<(), String> {
+pub fn stop_worker(id: String, state: State<AppState>, app: AppHandle) -> Result<(), String> {
     let mut workers = state.workers.lock().unwrap();
     let worker = workers
         .iter_mut()
@@ -670,11 +669,12 @@ pub fn stop_worker(id: String, state: State<AppState>) -> Result<(), String> {
         serde_json::json!({ "worker_id": worker_id }).to_string(),
     ));
 
+    let _ = app.emit("data-changed", "");
     Ok(())
 }
 
 #[tauri::command]
-pub fn delete_worker(id: String, state: State<AppState>) -> Result<(), String> {
+pub fn delete_worker(id: String, state: State<AppState>, app: AppHandle) -> Result<(), String> {
     let mut workers = state.workers.lock().unwrap();
     let idx = workers
         .iter()
@@ -713,6 +713,7 @@ pub fn delete_worker(id: String, state: State<AppState>) -> Result<(), String> {
     // Delete log file from disk
     state.delete_log(&id);
 
+    let _ = app.emit("data-changed", "");
     Ok(())
 }
 

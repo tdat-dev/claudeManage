@@ -19,3 +19,4 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5"
 portable-pty = "0.8"
+tokio = "1.49.0"

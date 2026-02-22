@@ -1,6 +1,6 @@
 use std::fs;
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::git;
 use crate::models::crew::{Crew, CrewInfo, CrewStatus};
@@ -106,28 +106,42 @@ pub fn get_crew_presets() -> Vec<CrewPreset> {
 }
 
 #[tauri::command]
-pub fn list_crews(rig_id: String, state: State<AppState>) -> Result<Vec<CrewInfo>, String> {
-    let rigs = state.rigs.lock().unwrap();
-    let rig = rigs
-        .iter()
-        .find(|r| r.id == rig_id)
-        .ok_or_else(|| "Rig not found".to_string())?;
-    let _rig_path = rig.path.clone();
-    drop(rigs);
+pub async fn list_crews(rig_id: String, state: State<'_, AppState>) -> Result<Vec<CrewInfo>, String> {
+    let rig_exists = {
+        let rigs = state.rigs.lock().unwrap();
+        rigs.iter().any(|r| r.id == rig_id)
+    };
+    if !rig_exists {
+        return Err("Rig not found".to_string());
+    }
 
-    let crews = state.crews.lock().unwrap();
-    let crew_infos: Vec<CrewInfo> = crews
-        .iter()
-        .filter(|c| c.rig_id == rig_id && c.status == CrewStatus::Active)
-        .map(|c| {
+    let crews = {
+        let crews_guard = state.crews.lock().unwrap();
+        crews_guard
+            .iter()
+            .filter(|c| c.rig_id == rig_id && c.status == CrewStatus::Active)
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+
+    let mut handles = vec![];
+    for c in crews {
+        handles.push(tokio::task::spawn_blocking(move || {
             let branch = git::get_current_branch(&c.path);
-            let status = git::get_short_status(&c.path);
-            let changed = git::get_changed_file_count(&c.path);
+            let (status, changed) = git::get_status_info(&c.path);
             c.to_info(branch, status, changed)
-        })
-        .collect();
+        }));
+    }
 
-    Ok(crew_infos)
+    let mut results = vec![];
+    for handle in handles {
+        match handle.await {
+            Ok(info) => results.push(info),
+            Err(e) => return Err(format!("Task failed: {}", e)),
+        }
+    }
+
+    Ok(results)
 }
 
 #[tauri::command]
@@ -135,7 +149,9 @@ pub fn create_crew(
     rig_id: String,
     name: String,
     base_branch: String,
+    push_to_remote: bool,
     state: State<AppState>,
+    app: AppHandle,
 ) -> Result<CrewInfo, String> {
     let rigs = state.rigs.lock().unwrap();
     let rig = rigs
@@ -172,21 +188,23 @@ pub fn create_crew(
 
     git::create_worktree(&rig_path, &wt_path_str, &branch_name, &base_branch)?;
 
-    // Publish the new branch to remote
-    if let Err(e) = git::push_branch(&rig_path, &branch_name) {
-        eprintln!("Warning: failed to push branch '{}' to remote: {}", branch_name, e);
+    // Publish the new branch to remote if requested
+    if push_to_remote {
+        if let Err(e) = git::push_branch(&rig_path, &branch_name) {
+            eprintln!("Warning: failed to push branch '{}' to remote: {}", branch_name, e);
+        }
     }
 
     let crew = Crew::new(rig_id, name, branch_name, wt_path_str.clone());
     let branch = git::get_current_branch(&wt_path_str);
-    let status = git::get_short_status(&wt_path_str);
-    let changed = git::get_changed_file_count(&wt_path_str);
+    let (status, changed) = git::get_status_info(&wt_path_str);
     let info = crew.to_info(branch, status, changed);
 
     let mut crews = state.crews.lock().unwrap();
     crews.push(crew);
     state.save_crews(&crews);
 
+    let _ = app.emit("data-changed", "");
     Ok(info)
 }
 
@@ -199,36 +217,35 @@ pub fn get_crew(id: String, state: State<AppState>) -> Result<CrewInfo, String> 
         .ok_or_else(|| "Crew not found".to_string())?;
 
     let branch = git::get_current_branch(&crew.path);
-    let status = git::get_short_status(&crew.path);
-    let changed = git::get_changed_file_count(&crew.path);
+    let (status, changed) = git::get_status_info(&crew.path);
     Ok(crew.to_info(branch, status, changed))
 }
 
 #[tauri::command]
-pub fn delete_crew(id: String, state: State<AppState>) -> Result<(), String> {
-    let mut crews = state.crews.lock().unwrap();
-    let crew = crews
-        .iter()
-        .find(|c| c.id == id)
-        .ok_or_else(|| "Crew not found".to_string())?;
+pub fn delete_crew(id: String, state: State<AppState>, app: AppHandle) -> Result<(), String> {
+    // Step 1: Read crew data (lock crews, extract info, drop lock)
+    let (crew_path, crew_branch, rig_id) = {
+        let crews = state.crews.lock().unwrap_or_else(|e| e.into_inner());
+        let crew = crews
+            .iter()
+            .find(|c| c.id == id)
+            .ok_or_else(|| "Crew not found".to_string())?;
+        (crew.path.clone(), crew.branch.clone(), crew.rig_id.clone())
+    };
 
-    let crew_path = crew.path.clone();
-    let crew_branch = crew.branch.clone();
-    let rig_id = crew.rig_id.clone();
+    // Step 2: Read rig path (lock rigs separately — no nested locks)
+    let rig_path = {
+        let rigs = state.rigs.lock().unwrap_or_else(|e| e.into_inner());
+        let rig = rigs
+            .iter()
+            .find(|r| r.id == rig_id)
+            .ok_or_else(|| "Rig not found".to_string())?;
+        rig.path.clone()
+    };
 
-    // Find rig path for worktree removal
-    let rigs = state.rigs.lock().unwrap();
-    let rig = rigs
-        .iter()
-        .find(|r| r.id == rig_id)
-        .ok_or_else(|| "Rig not found".to_string())?;
-    let rig_path = rig.path.clone();
-    drop(rigs);
-
-    // Remove the git worktree
+    // Step 3: Git operations (no locks held)
     git::remove_worktree(&rig_path, &crew_path)?;
 
-    // Delete the git branch locally and on remote
     if let Err(e) = git::delete_branch(&rig_path, &crew_branch) {
         eprintln!("Warning: failed to delete local branch '{}': {}", crew_branch, e);
     }
@@ -236,12 +253,16 @@ pub fn delete_crew(id: String, state: State<AppState>) -> Result<(), String> {
         eprintln!("Warning: failed to delete remote branch '{}': {}", crew_branch, e);
     }
 
-    // Soft-delete: set status to Removed instead of removing from list
-    if let Some(crew) = crews.iter_mut().find(|c| c.id == id) {
-        crew.status = CrewStatus::Removed;
+    // Step 4: Soft-delete (lock crews again briefly)
+    {
+        let mut crews = state.crews.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(crew) = crews.iter_mut().find(|c| c.id == id) {
+            crew.status = CrewStatus::Removed;
+        }
+        state.save_crews(&crews);
     }
-    state.save_crews(&crews);
 
+    let _ = app.emit("data-changed", "");
     Ok(())
 }
 

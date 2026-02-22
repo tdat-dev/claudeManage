@@ -200,6 +200,20 @@ impl AppState {
         }
     }
 
+    pub fn append_worker_log(&self, worker_id: &str, entry: LogEntry) {
+        let mut logs = self.worker_logs.lock().unwrap_or_else(|e| e.into_inner());
+        let entries = logs.entry(worker_id.to_string()).or_insert_with(Vec::new);
+        entries.push(entry);
+        
+        // Ring buffer: prevent memory leak for long-running workers.
+        const MAX_LOG_ENTRIES: usize = 5000;
+        if entries.len() > MAX_LOG_ENTRIES {
+            // Drop oldest 500 entries at once to amortize O(N) drain cost
+            let drain_count = entries.len() - MAX_LOG_ENTRIES + 500;
+            entries.drain(0..drain_count);
+        }
+    }
+
     // ── Audit events (append-only) ──
 
     pub fn append_audit_event(&self, event: &AuditEvent) {

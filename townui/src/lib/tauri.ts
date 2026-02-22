@@ -60,8 +60,9 @@ export async function createCrew(
   rigId: string,
   name: string,
   baseBranch: string,
+  pushToRemote: boolean = false,
 ): Promise<CrewInfo> {
-  return invoke<CrewInfo>("create_crew", { rigId, name, baseBranch });
+  return invoke<CrewInfo>("create_crew", { rigId, name, baseBranch, pushToRemote });
 }
 
 export async function getCrew(id: string): Promise<CrewInfo> {

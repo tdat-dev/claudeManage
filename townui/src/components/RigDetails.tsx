@@ -1,6 +1,10 @@
 import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { RigInfo } from "../lib/tauri";
 import { shortenPathForCli } from "../lib/path";
+import { useCrews } from "../hooks/useCrews";
+import CrewList from "./CrewList";
+import CrewCreateDialog from "./CrewCreateDialog";
 
 interface RigDetailsProps {
   rig: RigInfo;
@@ -51,7 +55,10 @@ export default function RigDetails({
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">{rig.name}</h1>
-          <p className="text-town-text-muted text-sm mt-1 font-mono" title={rig.path}>
+          <p
+            className="text-town-text-muted text-sm mt-1 font-mono"
+            title={rig.path}
+          >
             {shortenPathForCli(rig.path, 72)}
           </p>
         </div>
@@ -129,18 +136,16 @@ export default function RigDetails({
                   Status
                 </div>
                 <div
-                  className={`text-sm font-semibold flex items-center gap-2 ${
-                    rig.git_status === "Clean"
+                  className={`text-sm font-semibold flex items-center gap-2 ${rig.git_status === "Clean"
                       ? "text-town-success"
                       : "text-town-warning"
-                  }`}
+                    }`}
                 >
                   <span
-                    className={`w-2 h-2 rounded-full ${
-                      rig.git_status === "Clean"
+                    className={`w-2 h-2 rounded-full ${rig.git_status === "Clean"
                         ? "bg-town-success"
                         : "bg-town-warning animate-pulse-slow"
-                    }`}
+                      }`}
                   />
                   {rig.git_status || "unknown"}
                 </div>
@@ -224,8 +229,8 @@ export default function RigDetails({
         <CrewCreateDialog
           branches={branches}
           existingCrewNames={crews.map((c) => c.name)}
-          onCreated={async (name, baseBranch) => {
-            await addCrew(name, baseBranch);
+          onCreated={async (name, baseBranch, pushToRemote) => {
+            await addCrew(name, baseBranch, pushToRemote);
           }}
           onClose={() => setShowCrewCreate(false)}
         />

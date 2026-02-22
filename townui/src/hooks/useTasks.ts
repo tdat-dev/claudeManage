@@ -8,6 +8,7 @@ import {
   updateTask,
   deleteTask,
 } from "../lib/tauri";
+import { listen } from "@tauri-apps/api/event";
 
 export function useTasks(rigId: string | null) {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -33,6 +34,12 @@ export function useTasks(rigId: string | null) {
 
   useEffect(() => {
     refresh();
+    const unlisten = listen("data-changed", () => {
+      refresh();
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, [refresh]);
 
   const addTask = useCallback(

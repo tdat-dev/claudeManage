@@ -34,6 +34,12 @@ export function useWorkers(rigId: string | null) {
 
   useEffect(() => {
     refresh();
+    const unlisten = listen("data-changed", () => {
+      refresh();
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, [refresh]);
 
   // Auto-refresh when worker status changes
