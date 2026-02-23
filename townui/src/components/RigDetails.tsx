@@ -5,6 +5,7 @@ import { shortenPathForCli } from "../lib/path";
 import { useCrews } from "../hooks/useCrews";
 import CrewList from "./CrewList";
 import CrewCreateDialog from "./CrewCreateDialog";
+import { t } from "../lib/i18n";
 
 interface RigDetailsProps {
   rig: RigInfo;
@@ -30,7 +31,7 @@ export default function RigDetails({
   const handleDelete = () => {
     if (
       confirm(
-        `Delete rig "${rig.name}"? This only removes it from TownUI — your files are not affected.`,
+        t("vi", "delete_rig_confirm"),
       )
     ) {
       onDelete(rig.id);
@@ -66,7 +67,7 @@ export default function RigDetails({
           <button
             onClick={handleRefresh}
             className="btn-secondary !py-2 !px-3"
-            title="Refresh git status"
+            title={t("vi", "refresh_git")}
           >
             <svg
               width="16"
@@ -118,14 +119,14 @@ export default function RigDetails({
               <circle cx="6" cy="18" r="3" />
               <path d="M18 9a9 9 0 01-9 9" />
             </svg>
-            <h3 className="section-title">Git Status</h3>
+            <h3 className="section-title">{t("vi", "git_status")}</h3>
           </div>
 
           {rig.is_git_repo ? (
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-town-bg/50 rounded-lg p-3.5">
                 <div className="text-[11px] text-town-text-faint font-medium uppercase tracking-wider mb-1.5">
-                  Branch
+                  {t("vi", "branch")}
                 </div>
                 <div className="text-sm font-mono font-semibold text-town-accent">
                   {rig.git_branch || "unknown"}
@@ -133,18 +134,18 @@ export default function RigDetails({
               </div>
               <div className="bg-town-bg/50 rounded-lg p-3.5">
                 <div className="text-[11px] text-town-text-faint font-medium uppercase tracking-wider mb-1.5">
-                  Status
+                  {t("vi", "status")}
                 </div>
                 <div
                   className={`text-sm font-semibold flex items-center gap-2 ${rig.git_status === "Clean"
-                      ? "text-town-success"
-                      : "text-town-warning"
+                    ? "text-town-success"
+                    : "text-town-warning"
                     }`}
                 >
                   <span
                     className={`w-2 h-2 rounded-full ${rig.git_status === "Clean"
-                        ? "bg-town-success"
-                        : "bg-town-warning animate-pulse-slow"
+                      ? "bg-town-success"
+                      : "bg-town-warning animate-pulse-slow"
                       }`}
                   />
                   {rig.git_status || "unknown"}
@@ -167,7 +168,7 @@ export default function RigDetails({
                 <line x1="9" y1="9" x2="15" y2="15" />
               </svg>
               <span className="text-sm text-town-danger">
-                Not a git repository
+                {t("vi", "not_git_repo")}
               </span>
             </div>
           )}
@@ -189,12 +190,12 @@ export default function RigDetails({
               <line x1="12" y1="16" x2="12" y2="12" />
               <line x1="12" y1="8" x2="12.01" y2="8" />
             </svg>
-            <h3 className="section-title">Info</h3>
+            <h3 className="section-title">{t("vi", "info")}</h3>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-town-bg/50 rounded-lg p-3.5">
               <div className="text-[11px] text-town-text-faint font-medium uppercase tracking-wider mb-1.5">
-                Created
+                {t("vi", "created")}
               </div>
               <div className="text-sm font-medium">
                 {new Date(rig.created_at).toLocaleDateString()}
@@ -202,7 +203,7 @@ export default function RigDetails({
             </div>
             <div className="bg-town-bg/50 rounded-lg p-3.5">
               <div className="text-[11px] text-town-text-faint font-medium uppercase tracking-wider mb-1.5">
-                Last Opened
+                {t("vi", "last_opened")}
               </div>
               <div className="text-sm font-medium">
                 {new Date(rig.last_opened).toLocaleDateString()}

@@ -1,4 +1,5 @@
 import { CrewInfo } from "../lib/tauri";
+import { t } from "../lib/i18n";
 
 interface CrewListProps {
   crews: CrewInfo[];
@@ -41,7 +42,7 @@ export default function CrewList({
             <path d="M23 21v-2a4 4 0 00-3-3.87" />
             <path d="M16 3.13a4 4 0 010 7.75" />
           </svg>
-          <h3 className="section-title">Crews</h3>
+          <h3 className="section-title">{t("vi", "crews_title")}</h3>
           <span className="text-[10px] text-town-text-faint bg-town-bg/50 px-1.5 py-0.5 rounded-full">
             {crews.length}
           </span>
@@ -63,15 +64,15 @@ export default function CrewList({
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-          New Crew
+          {t("vi", "new_crew")}
         </button>
       </div>
 
       {crews.length === 0 ? (
         <div className="text-center py-6">
-          <p className="text-sm text-town-text-muted mb-1">No crews yet</p>
+          <p className="text-sm text-town-text-muted mb-1">{t("vi", "no_crews_yet")}</p>
           <p className="text-xs text-town-text-faint">
-            Create one to start a worktree workspace
+            {t("vi", "create_worktree")}
           </p>
         </div>
       ) : (
@@ -90,12 +91,12 @@ export default function CrewList({
                     {crew.changed_files > 0 ? (
                       <span className="badge bg-town-warning-soft text-town-warning">
                         <span className="w-1.5 h-1.5 rounded-full bg-town-warning" />
-                        {crew.changed_files} changed
+                        {crew.changed_files} {t("vi", "changed")}
                       </span>
                     ) : crew.git_status ? (
                       <span className="badge bg-town-success-soft text-town-success">
                         <span className="w-1.5 h-1.5 rounded-full bg-town-success" />
-                        Clean
+                        {t("vi", "clean")}
                       </span>
                     ) : null}
                   </div>
@@ -147,8 +148,8 @@ export default function CrewList({
                   onClick={() => {
                     const hasChanges = crew.changed_files > 0;
                     const msg = hasChanges
-                      ? `Delete crew "${crew.name}"? WARNING: This crew has ${crew.changed_files} uncommitted change(s) that will be lost!`
-                      : `Delete crew "${crew.name}"? This will remove the worktree.`;
+                      ? `${t("vi", "delete_crew_confirm")} "${crew.name}"? ${t("vi", "delete_crew_warn")}`
+                      : `${t("vi", "delete_crew_confirm")} "${crew.name}"? ${t("vi", "delete_crew_simple")}`;
                     if (confirm(msg)) {
                       onDelete(crew.id);
                     }

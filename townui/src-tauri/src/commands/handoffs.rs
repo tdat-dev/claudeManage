@@ -145,3 +145,107 @@ pub fn accept_handoff(
 
     Ok(updated)
 }
+
+#[tauri::command]
+pub fn reject_handoff(
+    handoff_id: String,
+    reason: Option<String>,
+    state: State<AppState>,
+) -> Result<Handoff, String> {
+    let mut handoffs = state.handoffs.lock().unwrap();
+    let handoff = handoffs
+        .iter_mut()
+        .find(|h| h.handoff_id == handoff_id)
+        .ok_or_else(|| "Handoff not found".to_string())?;
+
+    if handoff.status != HandoffStatus::Pending {
+        return Err("Only pending handoffs can be rejected".to_string());
+    }
+
+    handoff.status = HandoffStatus::Rejected;
+    handoff.rejected_at = Some(chrono::Utc::now().to_rfc3339());
+    handoff.rejected_reason = reason.clone();
+    let updated = handoff.clone();
+    state.save_handoffs(&handoffs);
+
+    let payload = serde_json::json!({
+        "handoff_id": updated.handoff_id,
+        "rejected_reason": reason,
+        "rejected_at": updated.rejected_at,
+    })
+    .to_string();
+    state.append_audit_event(&AuditEvent::new(
+        updated.rig_id.clone(),
+        Some(updated.to_actor_id.clone()),
+        Some(updated.work_item_id.clone()),
+        AuditEventType::HandoffRejected,
+        payload,
+    ));
+
+    Ok(updated)
+}
+
+/// Export a handoff as a machine-readable JSON artifact string.
+#[tauri::command]
+pub fn export_handoff(
+    handoff_id: String,
+    state: State<AppState>,
+) -> Result<String, String> {
+    let handoffs = state.handoffs.lock().unwrap();
+    let handoff = handoffs
+        .iter()
+        .find(|h| h.handoff_id == handoff_id)
+        .ok_or_else(|| "Handoff not found".to_string())?;
+
+    serde_json::to_string_pretty(handoff).map_err(|e| e.to_string())
+}
+
+/// Import a handoff from a machine-readable JSON string, assigning a new ID.
+#[tauri::command]
+pub fn import_handoff(
+    rig_id: String,
+    json_data: String,
+    state: State<AppState>,
+) -> Result<Handoff, String> {
+    // ensure rig exists
+    {
+        let rigs = state.rigs.lock().unwrap();
+        if !rigs.iter().any(|r| r.id == rig_id) {
+            return Err("Rig not found".to_string());
+        }
+    }
+
+    let mut handoff: Handoff =
+        serde_json::from_str(&json_data).map_err(|e| format!("Invalid handoff JSON: {}", e))?;
+
+    // Assign a fresh ID and override rig_id so it belongs to the target rig
+    handoff.handoff_id = uuid::Uuid::new_v4().to_string();
+    handoff.rig_id = rig_id.clone();
+    // Reset status to pending so the recipient can act on it
+    handoff.status = HandoffStatus::Pending;
+    handoff.accepted_at = None;
+    handoff.rejected_at = None;
+    handoff.rejected_reason = None;
+    handoff.created_at = chrono::Utc::now().to_rfc3339();
+
+    let mut handoffs = state.handoffs.lock().unwrap();
+    handoffs.push(handoff.clone());
+    state.save_handoffs(&handoffs);
+
+    let payload = serde_json::json!({
+        "handoff_id": handoff.handoff_id,
+        "imported": true,
+        "from_actor_id": handoff.from_actor_id,
+        "to_actor_id": handoff.to_actor_id,
+    })
+    .to_string();
+    state.append_audit_event(&AuditEvent::new(
+        rig_id,
+        Some(handoff.from_actor_id.clone()),
+        Some(handoff.work_item_id.clone()),
+        AuditEventType::HandoffCreated,
+        payload,
+    ));
+
+    Ok(handoff)
+}

@@ -1,12 +1,12 @@
 ﻿use std::io::{Read, Write};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::thread;
 
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::models::audit::{AuditEvent, AuditEventType};
-use crate::models::worker::{LogEntry, Run, RunStatus, Worker, WorkerStatusEnum};
+use crate::models::worker::{LogEntry, Run, RunStatus, Worker, WorkerStatusEnum, WorkerType};
 use crate::state::AppState;
 
 // ── Cross-platform helpers ──
@@ -189,12 +189,286 @@ fn sanitize_prompt_for_shell(prompt: &str) -> String {
         .to_string()
 }
 
-// ── Core spawn logic (via PTY so CLIs see a real terminal) ──
+#[cfg(target_os = "windows")]
+fn should_use_non_pty_spawn(agent_type: &str, initial_prompt: &str) -> bool {
+    agent_type.eq_ignore_ascii_case("codex") && !initial_prompt.trim().is_empty()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn should_use_non_pty_spawn(_agent_type: &str, _initial_prompt: &str) -> bool {
+    false
+}
+
+fn worker_status_to_str(status: &WorkerStatusEnum) -> &'static str {
+    match status {
+        WorkerStatusEnum::Running => "running",
+        WorkerStatusEnum::Stopped => "stopped",
+        WorkerStatusEnum::Completed => "completed",
+        WorkerStatusEnum::Failed => "failed",
+    }
+}
+
+fn persist_spawned_worker(
+    state: &AppState,
+    rig_id: &str,
+    crew_id: &str,
+    agent_type: &str,
+    worker_type: WorkerType,
+    actor_id: Option<String>,
+    pid: Option<u32>,
+) -> Worker {
+    let mut worker = Worker::new(
+        rig_id.to_string(),
+        crew_id.to_string(),
+        agent_type.to_string(),
+        worker_type,
+        actor_id,
+    );
+    worker.pid = pid;
+    let worker_id = worker.id.clone();
+
+    let mut workers = state.workers.lock().unwrap();
+    workers.push(worker.clone());
+    state.save_workers(&workers);
+    drop(workers);
+
+    state.append_audit_event(&AuditEvent::new(
+        rig_id.to_string(),
+        None,
+        None,
+        AuditEventType::WorkerSpawned,
+        serde_json::json!({
+            "worker_id": worker_id,
+            "agent_type": agent_type,
+            "pid": pid,
+        })
+        .to_string(),
+    ));
+
+    let mut logs = state.worker_logs.lock().unwrap();
+    logs.insert(worker.id.clone(), Vec::new());
+
+    worker
+}
+
+fn spawn_output_reader<R: Read + Send + 'static>(
+    thread_name: String,
+    reader: R,
+    worker_id: String,
+    stream: &'static str,
+    emit_raw_terminal_data: bool,
+    app: AppHandle,
+) {
+    thread::Builder::new()
+        .name(thread_name)
+        .spawn(move || {
+            let state = app.state::<AppState>();
+            let mut reader = reader;
+            let mut buf = [0u8; 4096];
+            let mut line_buf = String::new();
+
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let data = String::from_utf8_lossy(&buf[..n]).to_string();
+
+                        if emit_raw_terminal_data {
+                            if let Err(e) = app.emit("worker-pty-data", (&worker_id, &data)) {
+                                eprintln!("Failed to emit worker-pty-data: {}", e);
+                            }
+                        }
+
+                        line_buf.push_str(&data);
+                        while let Some(pos) = line_buf.find('\n') {
+                            let raw_line = line_buf[..pos].trim_end_matches('\r').to_string();
+                            let clean_line = strip_ansi_escapes(&raw_line);
+                            if !clean_line.trim().is_empty() {
+                                let entry = LogEntry {
+                                    timestamp: chrono::Utc::now().to_rfc3339(),
+                                    stream: stream.to_string(),
+                                    line: clean_line,
+                                };
+                                state.append_worker_log(&worker_id, entry.clone());
+                                if let Err(e) = app.emit("worker-log", (&worker_id, &entry)) {
+                                    eprintln!("Failed to emit worker-log: {}", e);
+                                }
+                            }
+                            line_buf = line_buf[pos + 1..].to_string();
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+
+            if !line_buf.trim().is_empty() {
+                let clean = strip_ansi_escapes(&line_buf);
+                if !clean.trim().is_empty() {
+                    let entry = LogEntry {
+                        timestamp: chrono::Utc::now().to_rfc3339(),
+                        stream: stream.to_string(),
+                        line: clean,
+                    };
+                    state.append_worker_log(&worker_id, entry.clone());
+                    let _ = app.emit("worker-log", (&worker_id, &entry));
+                }
+            }
+        })
+        .unwrap_or_else(|e| {
+            eprintln!("Failed to spawn output reader thread: {}", e);
+            panic!("Cannot read worker output");
+        });
+}
+
+fn finalize_worker_exit(
+    app: AppHandle,
+    worker_id: String,
+    final_status: WorkerStatusEnum,
+    exit_code: Option<i32>,
+) {
+    let state = app.state::<AppState>();
+
+    if final_status == WorkerStatusEnum::Failed {
+        let failure_line = match exit_code {
+            Some(code) => format!("Process exited with non-zero code: {}", code),
+            None => "Process terminated unexpectedly (no exit code)".to_string(),
+        };
+        let failure_entry = LogEntry {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            stream: "stderr".to_string(),
+            line: failure_line,
+        };
+
+        state.append_worker_log(&worker_id, failure_entry.clone());
+
+        if let Err(e) = app.emit("worker-log", (&worker_id, &failure_entry)) {
+            eprintln!("Failed to emit worker-log failure entry: {}", e);
+        }
+    }
+
+    let (is_polecat, polecat_crew_id) = {
+        let mut workers = state.workers.lock().unwrap();
+        let result = if let Some(w) = workers.iter_mut().find(|w| w.id == worker_id) {
+            w.status = final_status.clone();
+            w.stopped_at = Some(chrono::Utc::now().to_rfc3339());
+            (w.worker_type == WorkerType::Polecat, Some(w.crew_id.clone()))
+        } else {
+            (false, None)
+        };
+        state.save_workers(&workers);
+        result
+    };
+
+    let crew_path = {
+        let runs = state.runs.lock().unwrap();
+        let crew_id = runs
+            .iter()
+            .find(|r| r.worker_id == worker_id)
+            .map(|r| r.crew_id.clone());
+        drop(runs);
+
+        crew_id.and_then(|cid| {
+            let crews = state.crews.lock().unwrap();
+            crews.iter().find(|c| c.id == cid).map(|c| c.path.clone())
+        })
+    };
+
+    let diff_stats = crew_path.and_then(|path| crate::git::get_diff_stat(&path).ok());
+
+    {
+        let run_status = match final_status {
+            WorkerStatusEnum::Completed => RunStatus::Completed,
+            _ => RunStatus::Failed,
+        };
+        let mut runs = state.runs.lock().unwrap();
+        if let Some(run) = runs.iter_mut().find(|r| r.worker_id == worker_id) {
+            run.status = run_status;
+            run.finished_at = Some(chrono::Utc::now().to_rfc3339());
+            run.exit_code = exit_code;
+            run.diff_stats = diff_stats;
+        }
+        state.save_runs(&runs);
+    }
+
+    {
+        let mut logs = state.worker_logs.lock().unwrap();
+        if let Some(entries) = logs.remove(&worker_id) {
+            state.save_log(&worker_id, &entries);
+        }
+    }
+
+    if is_polecat {
+        if let Some(crew_id) = polecat_crew_id {
+            let polecat_crew = {
+                let crews = state.crews.lock().unwrap();
+                crews.iter().find(|c| c.id == crew_id).cloned()
+            };
+            if let Some(crew) = polecat_crew {
+                let rig_path = {
+                    let rigs = state.rigs.lock().unwrap();
+                    rigs.iter()
+                        .find(|r| r.id == crew.rig_id)
+                        .map(|r| r.path.clone())
+                };
+                if let Some(rp) = rig_path {
+                    let _ = crate::git::remove_worktree(&rp, &crew.path);
+                    let _ = crate::git::delete_branch(&rp, &crew.branch);
+                }
+                let mut crews = state.crews.lock().unwrap();
+                if let Some(c) = crews.iter_mut().find(|c| c.id == crew.id) {
+                    c.status = crate::models::crew::CrewStatus::Removed;
+                }
+                state.save_crews(&crews);
+            }
+        }
+    }
+
+    {
+        let mut writers = state.worker_writers.lock().unwrap();
+        writers.remove(&worker_id);
+    }
+    {
+        let mut masters = state.worker_pty_masters.lock().unwrap();
+        masters.remove(&worker_id);
+    }
+
+    let audit_type = match final_status {
+        WorkerStatusEnum::Completed => AuditEventType::WorkerCompleted,
+        _ => AuditEventType::WorkerFailed,
+    };
+    let rig_id_for_audit = {
+        let workers = state.workers.lock().unwrap();
+        workers
+            .iter()
+            .find(|w| w.id == worker_id)
+            .map(|w| w.rig_id.clone())
+            .unwrap_or_default()
+    };
+    state.append_audit_event(&AuditEvent::new(
+        rig_id_for_audit,
+        None,
+        None,
+        audit_type,
+        serde_json::json!({
+            "worker_id": worker_id,
+            "exit_code": exit_code,
+        })
+        .to_string(),
+    ));
+
+    if let Err(e) = app.emit("worker-status", (&worker_id, worker_status_to_str(&final_status))) {
+        eprintln!("Failed to emit worker-status: {}", e);
+    }
+}
+
+// ── Core spawn logic ──
 
 fn spawn_worker_inner(
     crew_id: String,
     agent_type: String,
     initial_prompt: String,
+    worker_type: WorkerType,
+    actor_id: Option<String>,
     app: AppHandle,
 ) -> Result<Worker, String> {
     let state = app.state::<AppState>();
@@ -306,7 +580,97 @@ fn spawn_worker_inner(
         }
     };
 
-    // Spawn an interactive shell via PTY — the user gets a real terminal
+    if should_use_non_pty_spawn(&agent_type, &initial_prompt) {
+        #[cfg(target_os = "windows")]
+        let resolved_cli = resolve_windows_cli_path(&cli_path).unwrap_or_else(|| cli_path.clone());
+        #[cfg(not(target_os = "windows"))]
+        let resolved_cli = cli_path.clone();
+
+        let mut cmd = std::process::Command::new(&resolved_cli);
+        cmd.current_dir(&cwd);
+        for (k, v) in &env_vars {
+            cmd.env(k, v);
+        }
+
+        if agent_type.eq_ignore_ascii_case("codex") && !initial_prompt.trim().is_empty() {
+            cmd.args([
+                "exec",
+                "--full-auto",
+                "-c",
+                "model_reasoning_effort=low",
+                initial_prompt.as_str(),
+            ]);
+        } else if !initial_prompt.trim().is_empty() {
+            cmd.arg(initial_prompt.as_str());
+        }
+
+        cmd.stdin(Stdio::null());
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("Failed to spawn {} (non-PTY): {}", resolved_cli, e))?;
+        let pid = Some(child.id());
+
+        let worker = persist_spawned_worker(
+            &state,
+            &rig_id,
+            &crew_id,
+            &agent_type,
+            worker_type,
+            actor_id,
+            pid,
+        );
+        let worker_id = worker.id.clone();
+
+        if let Some(stdout) = child.stdout.take() {
+            spawn_output_reader(
+                format!("worker-{}-stdout", &worker_id[..8]),
+                stdout,
+                worker_id.clone(),
+                "stdout",
+                true,
+                app.clone(),
+            );
+        }
+        if let Some(stderr) = child.stderr.take() {
+            spawn_output_reader(
+                format!("worker-{}-stderr", &worker_id[..8]),
+                stderr,
+                worker_id.clone(),
+                "stderr",
+                true,
+                app.clone(),
+            );
+        }
+
+        let app_wait = app.clone();
+        let worker_id_wait = worker_id.clone();
+        thread::Builder::new()
+            .name(format!("worker-{}-wait", &worker_id_wait[..8]))
+            .spawn(move || {
+                let (final_status, exit_code) = match child.wait() {
+                    Ok(status) => {
+                        let code = status.code();
+                        if code == Some(0) {
+                            (WorkerStatusEnum::Completed, code)
+                        } else {
+                            (WorkerStatusEnum::Failed, code)
+                        }
+                    }
+                    Err(_) => (WorkerStatusEnum::Failed, None),
+                };
+                finalize_worker_exit(app_wait, worker_id_wait, final_status, exit_code);
+            })
+            .unwrap_or_else(|e| {
+                eprintln!("Failed to spawn wait thread: {}", e);
+                panic!("Cannot wait on worker process");
+            });
+
+        return Ok(worker);
+    }
+
     #[cfg(target_os = "windows")]
     let mut cmd = CommandBuilder::new("cmd");
     #[cfg(not(target_os = "windows"))]
@@ -316,13 +680,10 @@ fn spawn_worker_inner(
     };
 
     cmd.cwd(&cwd);
-
-    // Add environment variables
     for (k, v) in &env_vars {
         cmd.env(k, v);
     }
 
-    // Open a pseudo-terminal pair — this gives the child process a real TTY
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {
@@ -333,65 +694,40 @@ fn spawn_worker_inner(
         })
         .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-    // Spawn process on the slave end of the PTY
     let mut child = pair
         .slave
         .spawn_command(cmd)
         .map_err(|e| format!("Failed to spawn {}: {}", cli_path, e))?;
 
-    // Get PID — portable-pty child exposes process_id()
     let pid = child.process_id();
-
-    let mut worker = Worker::new(rig_id.clone(), crew_id, agent_type.clone());
-    worker.pid = pid;
+    let worker = persist_spawned_worker(
+        &state,
+        &rig_id,
+        &crew_id,
+        &agent_type,
+        worker_type,
+        actor_id,
+        pid,
+    );
     let worker_id = worker.id.clone();
 
-    let mut workers = state.workers.lock().unwrap();
-    workers.push(worker.clone());
-    state.save_workers(&workers);
-    drop(workers);
-
-    // Audit: worker spawned
-    state.append_audit_event(&AuditEvent::new(
-        rig_id.clone(),
-        None,
-        None,
-        AuditEventType::WorkerSpawned,
-        serde_json::json!({
-            "worker_id": worker_id,
-            "agent_type": agent_type,
-            "pid": pid,
-        }).to_string(),
-    ));
-
-    // Initialize logs for this worker
-    {
-        let mut logs = state.worker_logs.lock().unwrap();
-        logs.insert(worker_id.clone(), Vec::new());
-    }
-
-    // Drop the slave side — we only need the master to read output
     drop(pair.slave);
 
-    // Get a reader from the PTY master (combined stdout+stderr)
     let reader = pair
         .master
         .try_clone_reader()
         .map_err(|e| format!("Failed to clone PTY reader: {}", e))?;
 
-    // Get a writer from the PTY master (for sending input to the process)
     let writer = pair
         .master
         .take_writer()
         .map_err(|e| format!("Failed to take PTY writer: {}", e))?;
 
-    // Store the writer so the frontend can send input to this worker
     {
         let mut writers = state.worker_writers.lock().unwrap();
         writers.insert(worker_id.clone(), writer);
     }
 
-    // Send the agent command into the interactive shell
     {
         let mut writers = state.worker_writers.lock().unwrap();
         if let Some(w) = writers.get_mut(&worker_id) {
@@ -401,83 +737,26 @@ fn spawn_worker_inner(
         }
     }
 
-    // Spawn a thread to read raw PTY output for real terminal rendering
-    let app_reader = app.clone();
-    let worker_id_reader = worker_id.clone();
-    thread::Builder::new()
-        .name(format!("worker-{}-pty", &worker_id_reader[..8]))
-        .spawn(move || {
-            let state = app_reader.state::<AppState>();
-            let mut reader = reader;
-            let mut buf = [0u8; 4096];
-            let mut line_buf = String::new();
+    spawn_output_reader(
+        format!("worker-{}-pty", &worker_id[..8]),
+        reader,
+        worker_id.clone(),
+        "stdout",
+        true,
+        app.clone(),
+    );
 
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        let data = String::from_utf8_lossy(&buf[..n]).to_string();
-
-                        // Emit raw data for xterm rendering
-                        if let Err(e) = app_reader.emit("worker-pty-data", (&worker_id_reader, &data)) {
-                            eprintln!("Failed to emit worker-pty-data: {}", e);
-                        }
-
-                        // Accumulate into lines for log storage
-                        line_buf.push_str(&data);
-                        while let Some(pos) = line_buf.find('\n') {
-                            let raw_line = line_buf[..pos].trim_end_matches('\r').to_string();
-                            let clean_line = strip_ansi_escapes(&raw_line);
-                            if !clean_line.trim().is_empty() {
-                                let entry = LogEntry {
-                                    timestamp: chrono::Utc::now().to_rfc3339(),
-                                    stream: "stdout".to_string(),
-                                    line: clean_line,
-                                };
-                                state.append_worker_log(&worker_id_reader, entry.clone());
-                                if let Err(e) = app_reader.emit("worker-log", (&worker_id_reader, &entry)) {
-                                    eprintln!("Failed to emit worker-log: {}", e);
-                                }
-                            }
-                            line_buf = line_buf[pos + 1..].to_string();
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-
-            // Flush remaining partial line
-            if !line_buf.trim().is_empty() {
-                let clean = strip_ansi_escapes(&line_buf);
-                if !clean.trim().is_empty() {
-                    let entry = LogEntry {
-                        timestamp: chrono::Utc::now().to_rfc3339(),
-                        stream: "stdout".to_string(),
-                        line: clean,
-                    };
-                    state.append_worker_log(&worker_id_reader, entry);
-                }
-            }
-        })
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to spawn PTY reader thread: {}", e);
-            panic!("Cannot read worker PTY");
-        });
-
-    // Store the PTY master in AppState so it stays alive and can be resized
     {
         let mut masters = state.worker_pty_masters.lock().unwrap();
         masters.insert(worker_id.clone(), pair.master);
     }
 
-    // Spawn a thread to wait for process exit and update status
     let app_wait = app.clone();
     let worker_id_wait = worker_id.clone();
     thread::Builder::new()
         .name(format!("worker-{}-wait", &worker_id_wait[..8]))
         .spawn(move || {
-            let exit_status = child.wait();
-            let (final_status, exit_code) = match exit_status {
+            let (final_status, exit_code) = match child.wait() {
                 Ok(status) => {
                     let code = status.exit_code() as i32;
                     if code == 0 {
@@ -488,134 +767,38 @@ fn spawn_worker_inner(
                 }
                 Err(_) => (WorkerStatusEnum::Failed, None),
             };
-
-            let state = app_wait.state::<AppState>();
-
-            if final_status == WorkerStatusEnum::Failed {
-                let failure_line = match exit_code {
-                    Some(code) => format!("Process exited with non-zero code: {}", code),
-                    None => "Process terminated unexpectedly (no exit code)".to_string(),
-                };
-                let failure_entry = LogEntry {
-                    timestamp: chrono::Utc::now().to_rfc3339(),
-                    stream: "stderr".to_string(),
-                    line: failure_line,
-                };
-
-                state.append_worker_log(&worker_id_wait, failure_entry.clone());
-
-                if let Err(e) = app_wait.emit("worker-log", (&worker_id_wait, &failure_entry)) {
-                    eprintln!("Failed to emit worker-log failure entry: {}", e);
-                }
-            }
-
-            // Update Worker record
-            {
-                let mut workers = state.workers.lock().unwrap();
-                if let Some(w) = workers.iter_mut().find(|w| w.id == worker_id_wait) {
-                    w.status = final_status.clone();
-                    w.stopped_at = Some(chrono::Utc::now().to_rfc3339());
-                }
-                state.save_workers(&workers);
-            }
-
-            // Find the crew path for diff stats
-            let crew_path = {
-                let runs = state.runs.lock().unwrap();
-                let crew_id = runs
-                    .iter()
-                    .find(|r| r.worker_id == worker_id_wait)
-                    .map(|r| r.crew_id.clone());
-                drop(runs);
-
-                crew_id.and_then(|cid| {
-                    let crews = state.crews.lock().unwrap();
-                    crews.iter().find(|c| c.id == cid).map(|c| c.path.clone())
-                })
-            };
-
-            // Collect diff stats
-            let diff_stats = crew_path.and_then(|path| {
-                crate::git::get_diff_stat(&path).ok()
-            });
-
-            // Update Run record
-            {
-                let run_status = match final_status {
-                    WorkerStatusEnum::Completed => RunStatus::Completed,
-                    _ => RunStatus::Failed,
-                };
-                let mut runs = state.runs.lock().unwrap();
-                if let Some(run) = runs.iter_mut().find(|r| r.worker_id == worker_id_wait) {
-                    run.status = run_status;
-                    run.finished_at = Some(chrono::Utc::now().to_rfc3339());
-                    run.exit_code = exit_code;
-                    run.diff_stats = diff_stats;
-                }
-                state.save_runs(&runs);
-            }
-
-            // Flush logs from memory to disk
-            {
-                let mut logs = state.worker_logs.lock().unwrap();
-                if let Some(entries) = logs.remove(&worker_id_wait) {
-                    state.save_log(&worker_id_wait, &entries);
-                }
-            }
-
-            // Remove writer and PTY master on exit
-            {
-                let mut writers = state.worker_writers.lock().unwrap();
-                writers.remove(&worker_id_wait);
-            }
-            {
-                let mut masters = state.worker_pty_masters.lock().unwrap();
-                masters.remove(&worker_id_wait);
-            }
-
-            // Audit: worker completed/failed
-            let audit_type = match final_status {
-                WorkerStatusEnum::Completed => AuditEventType::WorkerCompleted,
-                _ => AuditEventType::WorkerFailed,
-            };
-            let rig_id_for_audit = {
-                let workers = state.workers.lock().unwrap();
-                workers.iter().find(|w| w.id == worker_id_wait).map(|w| w.rig_id.clone()).unwrap_or_default()
-            };
-            state.append_audit_event(&AuditEvent::new(
-                rig_id_for_audit,
-                None,
-                None,
-                audit_type,
-                serde_json::json!({
-                    "worker_id": worker_id_wait,
-                    "exit_code": exit_code,
-                }).to_string(),
-            ));
-
-            // Emit status as snake_case to match frontend enum
-            let status_str = match final_status {
-                WorkerStatusEnum::Running => "running",
-                WorkerStatusEnum::Stopped => "stopped",
-                WorkerStatusEnum::Completed => "completed",
-                WorkerStatusEnum::Failed => "failed",
-            };
-            if let Err(e) = app_wait.emit(
-                "worker-status",
-                (&worker_id_wait, status_str),
-            ) {
-                eprintln!("Failed to emit worker-status: {}", e);
-            }
+            finalize_worker_exit(app_wait, worker_id_wait, final_status, exit_code);
         })
         .unwrap_or_else(|e| {
             eprintln!("Failed to spawn wait thread: {}", e);
             panic!("Cannot wait on worker process");
         });
 
-    Ok(worker.clone())
+    Ok(worker)
 }
 
 // ── Tauri commands ──
+
+pub(crate) fn spawn_worker_for_actor(
+    crew_id: String,
+    agent_type: String,
+    initial_prompt: String,
+    actor_id: Option<String>,
+    app: AppHandle,
+) -> Result<Worker, String> {
+    let res = spawn_worker_inner(
+        crew_id,
+        agent_type,
+        initial_prompt,
+        WorkerType::Crew,
+        actor_id,
+        app.clone(),
+    );
+    if res.is_ok() {
+        let _ = app.emit("data-changed", "");
+    }
+    res
+}
 
 #[tauri::command]
 pub fn spawn_worker(
@@ -624,7 +807,56 @@ pub fn spawn_worker(
     initial_prompt: String,
     app: AppHandle,
 ) -> Result<Worker, String> {
-    let res = spawn_worker_inner(crew_id, agent_type, initial_prompt, app.clone());
+    spawn_worker_for_actor(crew_id, agent_type, initial_prompt, None, app)
+}
+
+#[tauri::command]
+pub fn spawn_polecat(
+    rig_id: String,
+    agent_type: String,
+    initial_prompt: String,
+    actor_id: Option<String>,
+    state: State<AppState>,
+    app: AppHandle,
+) -> Result<Worker, String> {
+    // Get rig path
+    let rig_path = {
+        let rigs = state.rigs.lock().unwrap();
+        rigs.iter()
+            .find(|r| r.id == rig_id)
+            .map(|r| r.path.clone())
+            .ok_or_else(|| "Rig not found".to_string())?
+    };
+
+    // Create a temporary worktree for this polecat
+    let polecat_slug = format!("polecat-{}", &uuid::Uuid::new_v4().to_string()[..8]);
+    let branch_name = format!("polecat/{}", polecat_slug);
+    let wt_dir = state.worktrees_dir().join(&rig_id);
+    let _ = std::fs::create_dir_all(&wt_dir);
+    let wt_path = wt_dir.join(&polecat_slug);
+    let wt_path_str = wt_path.to_string_lossy().to_string();
+
+    // Determine base branch
+    let base_branch = crate::git::get_current_branch(&rig_path)
+        .unwrap_or_else(|| "main".to_string());
+
+    crate::git::create_worktree(&rig_path, &wt_path_str, &branch_name, &base_branch)?;
+
+    // Register as a temporary crew
+    let crew = crate::models::crew::Crew::new(
+        rig_id.clone(),
+        format!("Polecat {}", &polecat_slug[..8]),
+        branch_name,
+        wt_path_str,
+    );
+    let crew_id = crew.id.clone();
+    {
+        let mut crews = state.crews.lock().unwrap();
+        crews.push(crew);
+        state.save_crews(&crews);
+    }
+
+    let res = spawn_worker_inner(crew_id, agent_type, initial_prompt, WorkerType::Polecat, actor_id, app.clone());
     if res.is_ok() {
         let _ = app.emit("data-changed", "");
     }
@@ -817,6 +1049,8 @@ pub fn execute_task(
         crew_id.clone(),
         effective_agent_type.clone(),
         rendered.clone(),
+        WorkerType::Crew,
+        None,
         app,
     )?;
 

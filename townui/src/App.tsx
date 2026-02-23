@@ -58,6 +58,9 @@ export default function App() {
     loading: handoffsLoading,
     addHandoff,
     accept,
+    reject,
+    doExport: exportHandoffJson,
+    doImport: importHandoffJson,
   } = useHandoffs(selectedRig?.id ?? null);
   const {
     actors,
@@ -96,7 +99,7 @@ export default function App() {
               <div className="flex flex-col items-center gap-3">
                 <div className="w-8 h-8 border-2 border-town-accent/30 border-t-town-accent rounded-full animate-spin" />
                 <span className="text-sm text-town-text-muted">
-                  Loading rigs...
+                  {t(language, "rigs_loading")}
                 </span>
               </div>
             </div>
@@ -123,7 +126,7 @@ export default function App() {
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-town-danger mb-1">
-                    Error
+                    {t(language, "error")}
                   </h3>
                   <p className="text-sm text-town-text-muted">{error}</p>
                 </div>
@@ -160,11 +163,10 @@ export default function App() {
                 </svg>
               </div>
               <h2 className="text-2xl font-bold text-town-text mb-2">
-                Welcome to TownUI
+                {t(language, "welcome_title")}
               </h2>
               <p className="text-town-text-muted text-sm mb-6 max-w-xs mx-auto leading-relaxed">
-                Manage your AI coding agents across multiple repositories.
-                Select a rig or add a new one to get started.
+                {t(language, "welcome_desc")}
               </p>
               <button
                 onClick={() => setShowCreate(true)}
@@ -182,7 +184,7 @@ export default function App() {
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
-                Add Your First Rig
+                {t(language, "welcome_add_rig")}
               </button>
             </div>
           </div>
@@ -208,7 +210,7 @@ export default function App() {
                   </svg>
                 </div>
                 <p className="text-sm text-town-text-muted">
-                  Select a rig first to manage tasks
+                  {t(language, "select_rig_manage_tasks")}
                 </p>
               </div>
             </div>
@@ -291,6 +293,15 @@ export default function App() {
                   onAccept={async (handoffId, acceptedByActorId) => {
                     await accept(handoffId, acceptedByActorId);
                   }}
+                  onReject={async (handoffId, reason) => {
+                    await reject(handoffId, reason);
+                  }}
+                  onExport={async (handoffId) => {
+                    return await exportHandoffJson(handoffId);
+                  }}
+                  onImport={async (jsonData) => {
+                    await importHandoffJson(jsonData);
+                  }}
                 />
               </div>
             </div>
@@ -323,7 +334,7 @@ export default function App() {
                   <span className="text-xl text-town-text-faint">👤</span>
                 </div>
                 <p className="text-sm text-town-text-muted">
-                  Select a rig first to manage actors
+                  {t(language, "actor_select_first")}
                 </p>
               </div>
             </div>
@@ -364,7 +375,7 @@ export default function App() {
                   <span className="text-xl text-town-text-faint">📋</span>
                 </div>
                 <p className="text-sm text-town-text-muted">
-                  Select a rig first to view audit trail
+                  {t(language, "audit_select_rig")}
                 </p>
               </div>
             </div>
@@ -374,9 +385,9 @@ export default function App() {
           <div className="p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold">Audit Trail</h2>
+                <h2 className="text-lg font-bold">{t(language, "audit_title")}</h2>
                 <p className="text-xs text-town-text-muted mt-0.5">
-                  Timeline of all events in {selectedRig.name}
+                  {t(language, "audit_timeline")} — {selectedRig.name}
                 </p>
               </div>
             </div>
@@ -401,6 +412,7 @@ export default function App() {
     <Layout
       activePage={activePage}
       onNavigate={setActivePage}
+      language={language}
       sidebar={
         <RigList
           rigs={rigs}

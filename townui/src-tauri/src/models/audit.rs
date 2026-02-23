@@ -21,6 +21,7 @@ pub enum AuditEventType {
     HookResumed,
     HandoffCreated,
     HandoffAccepted,
+    HandoffRejected,
     ConvoyCreated,
     ConvoyUpdated,
     ConvoyCompleted,

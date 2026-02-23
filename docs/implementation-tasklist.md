@@ -183,7 +183,7 @@
 ## Gas Town Compatibility Checklist (từ docs §13)
 
 - [x] Task tồn tại độc lập với session runtime (JSON persistence)
-- [ ] Handoff có format chuẩn + machine-readable
+- [x] Handoff có format chuẩn + machine-readable
 - [x] Có convoy/group để nhìn tiến độ mục tiêu lớn
 - [x] Có khả năng resume task sau restart
 - [x] Có audit trail đầy đủ cho mọi thay đổi trạng thái

@@ -17,6 +17,7 @@ pub struct Hook {
     pub current_work_id: Option<String>,
     pub state_blob: Option<String>,
     pub status: HookStatus,
+    pub worker_id: Option<String>,
     pub last_heartbeat: String,
     pub created_at: String,
 }
@@ -31,6 +32,7 @@ impl Hook {
             current_work_id: None,
             state_blob: None,
             status: HookStatus::Idle,
+            worker_id: None,
             last_heartbeat: now.clone(),
             created_at: now,
         }

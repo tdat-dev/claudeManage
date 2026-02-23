@@ -16,7 +16,7 @@ fn default_cli() -> String {
 }
 
 fn default_language() -> String {
-    "en".to_string()
+    "vi".to_string()
 }
 
 impl Default for AppSettings {

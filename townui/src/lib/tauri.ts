@@ -237,7 +237,7 @@ export async function resumeHook(hookId: string): Promise<HookInfo> {
 
 // ── Handoff types ──
 
-export type HandoffStatus = "pending" | "accepted";
+export type HandoffStatus = "pending" | "accepted" | "rejected";
 
 export interface HandoffInfo {
   handoff_id: string;
@@ -251,6 +251,8 @@ export interface HandoffInfo {
   created_at: string;
   status: HandoffStatus;
   accepted_at: string | null;
+  rejected_at: string | null;
+  rejected_reason: string | null;
 }
 
 export async function listHandoffs(rigId: string): Promise<HandoffInfo[]> {
@@ -285,6 +287,27 @@ export async function acceptHandoff(
     handoffId,
     acceptedByActorId: acceptedByActorId ?? null,
   });
+}
+
+export async function rejectHandoff(
+  handoffId: string,
+  reason?: string,
+): Promise<HandoffInfo> {
+  return invoke<HandoffInfo>("reject_handoff", {
+    handoffId,
+    reason: reason ?? null,
+  });
+}
+
+export async function exportHandoff(handoffId: string): Promise<string> {
+  return invoke<string>("export_handoff", { handoffId });
+}
+
+export async function importHandoff(
+  rigId: string,
+  jsonData: string,
+): Promise<HandoffInfo> {
+  return invoke<HandoffInfo>("import_handoff", { rigId, jsonData });
 }
 
 // ── Convoy types ──
@@ -543,6 +566,7 @@ export type AuditEventType =
   | "hook_resumed"
   | "handoff_created"
   | "handoff_accepted"
+  | "handoff_rejected"
   | "convoy_created"
   | "convoy_updated"
   | "convoy_completed"

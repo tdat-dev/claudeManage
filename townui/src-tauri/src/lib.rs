@@ -58,6 +58,9 @@ pub fn run() {
             commands::handoffs::list_handoffs,
             commands::handoffs::create_handoff,
             commands::handoffs::accept_handoff,
+            commands::handoffs::reject_handoff,
+            commands::handoffs::export_handoff,
+            commands::handoffs::import_handoff,
             // Convoys
             commands::convoys::list_convoys,
             commands::convoys::get_convoy,

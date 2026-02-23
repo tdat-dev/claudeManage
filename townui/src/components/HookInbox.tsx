@@ -81,7 +81,7 @@ export default function HookInbox({
             onChange={(e) => setSelectedActorId(e.target.value)}
             className="select-base !py-2 !text-xs flex-1"
           >
-            <option value="">Select an actor…</option>
+            <option value="">{t(language, "select_actor")}</option>
             {availableActors.map((actor) => (
               <option key={actor.actor_id} value={actor.actor_id}>
                 {actor.name} ({actor.role}) — {actor.agent_type}
@@ -91,8 +91,8 @@ export default function HookInbox({
         ) : (
           <div className="flex-1 text-[11px] text-town-text-faint flex items-center px-2">
             {actors.length === 0
-              ? "Create actors first (Actors page)"
-              : "All actors already have hooks"}
+              ? t(language, "create_actors_first")
+              : t(language, "all_actors_have_hooks")}
           </div>
         )}
         <button
@@ -100,15 +100,15 @@ export default function HookInbox({
           disabled={creating || !selectedActorId}
           className="btn-primary !py-2 !px-3 !text-xs"
         >
-          {creating ? "…" : "Create Hook"}
+          {creating ? "…" : t(language, "create_hook")}
         </button>
       </div>
 
       {loading ? (
-        <div className="text-xs text-town-text-muted">Loading hooks…</div>
+        <div className="text-xs text-town-text-muted">{t(language, "loading_hooks")}</div>
       ) : hooks.length === 0 ? (
         <div className="text-xs text-town-text-muted">
-          No hooks yet — create actors first, then add hooks
+          {t(language, "no_hooks_hint")}
         </div>
       ) : (
         <div className="space-y-2 max-h-72 overflow-auto pr-1">
@@ -119,6 +119,7 @@ export default function HookInbox({
               <HookRow
                 key={hook.hook_id}
                 hook={hook}
+                language={language}
                 tasks={todoTasks}
                 defaultTaskId={defaultTaskId}
                 actorLabel={actorName(hook.attached_actor_id)}
@@ -137,6 +138,7 @@ export default function HookInbox({
 
 function HookRow({
   hook,
+  language,
   tasks,
   defaultTaskId,
   actorLabel,
@@ -146,6 +148,7 @@ function HookRow({
   onResume,
 }: {
   hook: HookInfo;
+  language: AppLanguage;
   tasks: TaskItem[];
   defaultTaskId: string;
   actorLabel: string;
@@ -186,7 +189,7 @@ function HookRow({
           onChange={(e) => setTaskId(e.target.value)}
           className="select-base !text-xs !py-1.5"
         >
-          <option value="">Select task…</option>
+          <option value="">{t(language, "select_task")}</option>
           {tasks.map((t) => (
             <option key={t.id} value={t.id}>
               {t.title}
@@ -203,26 +206,26 @@ function HookRow({
               disabled={!taskId}
               className="btn-ghost !py-1 !px-2 !text-[11px]"
             >
-              Assign
+              {t(language, "assign")}
             </button>
             <button
               onClick={() => taskId && onSling(hook.hook_id, taskId)}
               disabled={!taskId}
               className="btn-primary !py-1 !px-2 !text-[11px]"
             >
-              ⚡ Sling
+              ⚡ {t(language, "sling")}
             </button>
           </>
         )}
         {(hook.status === "running" || hook.status === "assigned") && (
           <button
             onClick={() => {
-              const outcome = prompt("Outcome (optional):") || undefined;
+              const outcome = prompt(t(language, "outcome_optional")) || undefined;
               onDone(hook.hook_id, outcome);
             }}
             className="btn-success !py-1 !px-2 !text-[11px]"
           >
-            ✓ Done
+            ✓ {t(language, "task_done")}
           </button>
         )}
         {hook.status === "done" && (
@@ -230,7 +233,7 @@ function HookRow({
             onClick={() => onResume(hook.hook_id)}
             className="btn-ghost !py-1 !px-2 !text-[11px]"
           >
-            ↻ Resume
+            {t(language, "resume")}
           </button>
         )}
       </div>

@@ -134,7 +134,13 @@ fn auto_execute_hook_work(
     let agent_type = resolve_hook_agent_type(hook, state);
     let prompt = build_hook_task_prompt(hook, work_item_id, &crew_id, state)?;
 
-    let worker = super::workers::spawn_worker(crew_id.clone(), agent_type.clone(), prompt, app)?;
+    let worker = super::workers::spawn_worker_for_actor(
+        crew_id.clone(),
+        agent_type.clone(),
+        prompt,
+        Some(hook.attached_actor_id.clone()),
+        app,
+    )?;
 
     {
         let mut tasks = state.tasks.lock().unwrap();
@@ -441,7 +447,13 @@ pub fn resume_hook(hook_id: String, state: State<AppState>, app: AppHandle) -> R
     ));
 
     // Spawn a worker to continue the work
-    match super::workers::spawn_worker(crew_id, agent_type, resume_prompt, app) {
+    match super::workers::spawn_worker_for_actor(
+        crew_id,
+        agent_type,
+        resume_prompt,
+        Some(updated.attached_actor_id.clone()),
+        app,
+    ) {
         Ok(worker) => {
             // Link the worker to the hook's current work item if any
             if let Some(ref task_id) = updated.current_work_id {
@@ -456,7 +468,7 @@ pub fn resume_hook(hook_id: String, state: State<AppState>, app: AppHandle) -> R
                         assigned_worker_id: Some(Some(worker.id.clone())),
                         acceptance_criteria: None,
                         dependencies: None,
-                        owner_actor_id: None,
+                        owner_actor_id: Some(Some(updated.attached_actor_id.clone())),
                         convoy_id: None,
                         hook_id: Some(Some(updated.hook_id.clone())),
                         blocked_reason: Some(None),

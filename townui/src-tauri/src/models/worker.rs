@@ -9,6 +9,13 @@ pub enum WorkerStatusEnum {
     Completed,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum WorkerType {
+    Crew,
+    Polecat,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Worker {
     pub id: String,
@@ -16,6 +23,7 @@ pub struct Worker {
     pub crew_id: String,
     pub agent_type: String,
     pub actor_id: Option<String>,
+    pub worker_type: WorkerType,
     pub status: WorkerStatusEnum,
     pub pid: Option<u32>,
     pub started_at: String,
@@ -56,13 +64,14 @@ pub struct Run {
 }
 
 impl Worker {
-    pub fn new(rig_id: String, crew_id: String, agent_type: String) -> Self {
+    pub fn new(rig_id: String, crew_id: String, agent_type: String, worker_type: WorkerType, actor_id: Option<String>) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             rig_id,
             crew_id,
             agent_type,
-            actor_id: None,
+            actor_id,
+            worker_type,
             status: WorkerStatusEnum::Running,
             pid: None,
             started_at: chrono::Utc::now().to_rfc3339(),
