@@ -25,6 +25,7 @@ export default function SettingsPage({
   onValidatePath,
 }: SettingsPageProps) {
   const [draft, setDraft] = useState<AppSettings | null>(null);
+  const [selectedCliKey, setSelectedCliKey] = useState<string>("");
   const [validationResult, setValidationResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [seedInfo, setSeedInfo] = useState<SeedInfo | null>(null);
@@ -43,6 +44,14 @@ export default function SettingsPage({
 
   const current = draft || settings;
   const language = (current?.language ?? "en") as "en" | "vi";
+  const cliKeys = Object.keys(current?.cli_paths ?? {});
+
+  useEffect(() => {
+    if (!current) return;
+    if (!selectedCliKey || !current.cli_paths[selectedCliKey]) {
+      setSelectedCliKey(cliKeys[0] ?? "");
+    }
+  }, [current, selectedCliKey, cliKeys]);
 
   if (loading || !current) {
     return (
@@ -187,27 +196,46 @@ export default function SettingsPage({
             </div>
 
             <div className="space-y-3">
-              {Object.entries(current.cli_paths).map(([key, value]) => (
-                <div key={key} className="group flex items-center gap-3">
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-town-text-muted w-28 shrink-0">
+                  Agent
+                </label>
+                <select
+                  value={selectedCliKey}
+                  onChange={(e) => setSelectedCliKey(e.target.value)}
+                  className="select-base flex-1"
+                >
+                  {cliKeys.map((key) => (
+                    <option key={key} value={key}>
+                      {key}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedCliKey && (
+                <div className="group flex items-center gap-3">
                   <label className="text-sm font-medium text-town-text-muted w-28 shrink-0 capitalize">
-                    {key}
+                    Path
                   </label>
                   <div className="flex-1 relative">
                     <input
                       type="text"
-                      value={value}
-                      onChange={(e) => updateCliPath(key, e.target.value)}
+                      value={current.cli_paths[selectedCliKey] ?? ""}
+                      onChange={(e) => updateCliPath(selectedCliKey, e.target.value)}
                       className="input-base font-mono text-xs pr-20"
                     />
                     <button
-                      onClick={() => handleValidate(value)}
+                      onClick={() =>
+                        handleValidate(current.cli_paths[selectedCliKey] ?? "")
+                      }
                       className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2 py-1 rounded-md text-[10px] font-medium bg-town-surface-hover text-town-text-muted hover:text-town-accent hover:bg-town-accent/10 transition-all duration-200"
                     >
                       Validate
                     </button>
                   </div>
                 </div>
-              ))}
+              )}
             </div>
 
             {validationResult && (
