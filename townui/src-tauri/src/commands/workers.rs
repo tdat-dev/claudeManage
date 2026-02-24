@@ -189,6 +189,16 @@ fn sanitize_prompt_for_shell(prompt: &str) -> String {
         .to_string()
 }
 
+/// Prepare prompt text to be passed as a direct process argument.
+/// Keep quotes intact, but collapse newlines to avoid truncation when routed through `cmd /C` on Windows.
+fn sanitize_prompt_for_arg(prompt: &str) -> String {
+    prompt
+        .replace('\r', " ")
+        .replace('\n', " ")
+        .trim()
+        .to_string()
+}
+
 #[cfg(target_os = "windows")]
 fn should_use_non_pty_spawn(agent_type: &str, initial_prompt: &str) -> bool {
     agent_type.eq_ignore_ascii_case("codex") && !initial_prompt.trim().is_empty()
@@ -536,6 +546,7 @@ fn spawn_worker_inner(
 
     // Build the full command string to send into the interactive shell
     let prompt_for_shell = sanitize_prompt_for_shell(&initial_prompt);
+    let prompt_for_arg = sanitize_prompt_for_arg(&initial_prompt);
     let agent_command = match agent_type.as_str() {
         "claude" => {
             if initial_prompt.is_empty() {
@@ -586,22 +597,39 @@ fn spawn_worker_inner(
         #[cfg(not(target_os = "windows"))]
         let resolved_cli = cli_path.clone();
 
+        #[cfg(target_os = "windows")]
+        let mut cmd = {
+            let lower = resolved_cli.to_ascii_lowercase();
+            if lower.ends_with(".cmd") || lower.ends_with(".bat") {
+                let mut c = std::process::Command::new("cmd");
+                c.arg("/C").arg(&resolved_cli);
+                c
+            } else if lower.ends_with(".ps1") {
+                let mut c = std::process::Command::new("powershell");
+                c.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", &resolved_cli]);
+                c
+            } else {
+                std::process::Command::new(&resolved_cli)
+            }
+        };
+        #[cfg(not(target_os = "windows"))]
         let mut cmd = std::process::Command::new(&resolved_cli);
+
         cmd.current_dir(&cwd);
         for (k, v) in &env_vars {
             cmd.env(k, v);
         }
 
-        if agent_type.eq_ignore_ascii_case("codex") && !initial_prompt.trim().is_empty() {
+        if agent_type.eq_ignore_ascii_case("codex") && !prompt_for_arg.is_empty() {
             cmd.args([
                 "exec",
                 "--full-auto",
                 "-c",
                 "model_reasoning_effort=low",
-                initial_prompt.as_str(),
+                prompt_for_arg.as_str(),
             ]);
-        } else if !initial_prompt.trim().is_empty() {
-            cmd.arg(initial_prompt.as_str());
+        } else if !prompt_for_arg.is_empty() {
+            cmd.arg(prompt_for_arg.as_str());
         }
 
         cmd.stdin(Stdio::null());

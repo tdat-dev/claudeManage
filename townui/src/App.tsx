@@ -23,7 +23,7 @@ import { useHooks } from "./hooks/useHooks";
 import { useHandoffs } from "./hooks/useHandoffs";
 import { useActors } from "./hooks/useActors";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
-import { TaskItem, executeTask } from "./lib/tauri";
+import { TaskItem, executeTask, getSettings, listCrews } from "./lib/tauri";
 import { AppLanguage, t } from "./lib/i18n";
 
 export default function App() {
@@ -74,6 +74,35 @@ export default function App() {
   const [showTaskCreate, setShowTaskCreate] = useState(false);
   const [executeTarget, setExecuteTarget] = useState<TaskItem | null>(null);
   const language: AppLanguage = settings?.language ?? "en";
+
+  const quickStartTask = async (task: TaskItem) => {
+    try {
+      const crews = await listCrews(task.rig_id);
+      if (crews.length === 0) {
+        setExecuteTarget(task);
+        return;
+      }
+
+      let agentType = "";
+      let templateName = "implement_feature";
+      try {
+        const appSettings = await getSettings();
+        if (appSettings.default_cli?.trim()) {
+          agentType = appSettings.default_cli;
+        }
+        if (appSettings.default_template?.trim()) {
+          templateName = appSettings.default_template;
+        }
+      } catch {
+        // Fall back to backend defaults.
+      }
+
+      await executeTask(task.id, crews[0].id, agentType, templateName);
+      await editTask(task.id, { status: "in_progress" });
+    } catch (e) {
+      alert(`Start failed: ${String(e)}`);
+    }
+  };
 
   // Plumb global hotkeys based on current page
   useGlobalShortcuts(
@@ -317,6 +346,7 @@ export default function App() {
                 onEdit={editTask}
                 onDelete={removeTask}
                 onExecute={(task) => setExecuteTarget(task)}
+                onQuickStart={quickStartTask}
                 onSling={async (taskId, hookId) => {
                   await slingNow(hookId, taskId);
                 }}

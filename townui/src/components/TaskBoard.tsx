@@ -17,6 +17,7 @@ interface TaskBoardProps {
   onEdit: (id: string, updates: TaskUpdate) => void;
   onDelete: (id: string) => void;
   onExecute: (task: TaskItem) => void;
+  onQuickStart?: (task: TaskItem) => Promise<void> | void;
   onSling?: (taskId: string, hookId: string) => Promise<void>;
 }
 
@@ -171,6 +172,7 @@ export default function TaskBoard({
   onEdit,
   onDelete,
   onExecute,
+  onQuickStart,
   onSling,
 }: TaskBoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -567,8 +569,13 @@ export default function TaskBoard({
                       onQuickAction={(action) => {
                         if (action === "done")
                           onEdit(task.id, { status: "done" });
-                        else if (action === "start")
-                          onEdit(task.id, { status: "in_progress" });
+                        else if (action === "start") {
+                          if (onQuickStart) {
+                            void onQuickStart(task);
+                          } else {
+                            onEdit(task.id, { status: "in_progress" });
+                          }
+                        }
                         else if (action === "delete") {
                           if (confirm(`${t(language, "task_delete_confirm")} "${task.title}"?`))
                             onDelete(task.id);

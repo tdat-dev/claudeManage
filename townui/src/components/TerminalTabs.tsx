@@ -53,7 +53,7 @@ const defaultStatus = {
 };
 
 export default function TerminalTabs({ rigId }: TerminalTabsProps) {
-  const { workers, loading, spawn, stop, remove, getLogs } = useWorkers(
+  const { workers, loading, spawn, stop, remove, getLogs, error: workersError } = useWorkers(
     rigId || null,
   );
   const { crews } = useCrews(rigId || null);
@@ -80,6 +80,7 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
   const [agentType, setAgentType] = useState("claude");
   const [prompt, setPrompt] = useState("");
   const [spawning, setSpawning] = useState(false);
+  const [spawnError, setSpawnError] = useState<string | null>(null);
 
   // Grid columns
   const [columns, setColumns] = useState(2);
@@ -134,11 +135,13 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
   const handleSpawn = async () => {
     if (!crewId) return;
     setSpawning(true);
+    setSpawnError(null);
     try {
       await spawn(crewId, agentType, prompt);
       setShowSpawn(false);
       setPrompt("");
-    } catch {
+    } catch (e) {
+      setSpawnError(String(e));
     } finally {
       setSpawning(false);
     }
@@ -532,6 +535,14 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
                 </span>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {(spawnError || workersError) && (
+        <div className="px-6 pt-3 shrink-0">
+          <div className="rounded-xl border border-town-danger/25 bg-town-danger/10 px-3 py-2 text-xs text-town-danger">
+            {spawnError || workersError}
           </div>
         </div>
       )}
