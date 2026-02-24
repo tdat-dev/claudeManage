@@ -45,6 +45,11 @@ export default function SettingsPage({
 
   const current = draft || settings;
   const language = (current?.language ?? "en") as "en" | "vi";
+  const bridge = current?.ai_inbox_bridge ?? {
+    bind_addr: "127.0.0.1:7331",
+    token: "",
+    auto_start: false,
+  };
 
   if (loading || !current) {
     return (
@@ -81,6 +86,18 @@ export default function SettingsPage({
     setDraft({
       ...current,
       env_vars: { ...current.env_vars, NEW_VAR: "" },
+    });
+  };
+
+  const updateBridge = (
+    patch: Partial<NonNullable<AppSettings["ai_inbox_bridge"]>>,
+  ) => {
+    setDraft({
+      ...current,
+      ai_inbox_bridge: {
+        ...bridge,
+        ...patch,
+      },
     });
   };
 
@@ -649,6 +666,67 @@ export default function SettingsPage({
                 )}
               </div>
             )}
+          </section>
+
+          {/* AI Inbox Bridge */}
+          <section className="glass-card p-5 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-md bg-town-accent/10 flex items-center justify-center">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="text-town-accent"
+                >
+                  <path d="M17 7l-10 10" />
+                  <path d="M8 7h9v9" />
+                </svg>
+              </div>
+              <h3 className="section-title !mb-0">AI Inbox Bridge</h3>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-wider text-town-text-faint">
+                  Bind Address
+                </label>
+                <input
+                  type="text"
+                  value={bridge.bind_addr}
+                  onChange={(e) => updateBridge({ bind_addr: e.target.value })}
+                  placeholder="127.0.0.1:7331"
+                  className="input-base font-mono text-xs"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-wider text-town-text-faint">
+                  Token
+                </label>
+                <input
+                  type="text"
+                  value={bridge.token}
+                  onChange={(e) => updateBridge({ token: e.target.value })}
+                  placeholder="Optional auth token"
+                  className="input-base font-mono text-xs"
+                />
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-town-text-muted">
+                <input
+                  type="checkbox"
+                  checked={bridge.auto_start}
+                  onChange={(e) =>
+                    updateBridge({ auto_start: e.target.checked })
+                  }
+                  className="rounded border-town-border/60 bg-town-surface"
+                />
+                Auto start bridge on app launch
+              </label>
+            </div>
           </section>
 
           {/* Language */}

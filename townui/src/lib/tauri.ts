@@ -520,6 +520,11 @@ export interface AppSettings {
   default_template: string;
   default_cli: string;
   language: "en" | "vi";
+  ai_inbox_bridge: {
+    bind_addr: string;
+    token: string;
+    auto_start: boolean;
+  };
 }
 
 export async function getSettings(): Promise<AppSettings> {

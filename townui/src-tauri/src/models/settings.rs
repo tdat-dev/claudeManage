@@ -1,6 +1,16 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiInboxBridgeSettings {
+    #[serde(default = "default_bridge_bind_addr")]
+    pub bind_addr: String,
+    #[serde(default)]
+    pub token: String,
+    #[serde(default)]
+    pub auto_start: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub cli_paths: std::collections::HashMap<String, String>,
     pub env_vars: std::collections::HashMap<String, String>,
@@ -9,6 +19,8 @@ pub struct AppSettings {
     pub default_cli: String,
     #[serde(default = "default_language")]
     pub language: String,
+    #[serde(default)]
+    pub ai_inbox_bridge: AiInboxBridgeSettings,
 }
 
 fn default_cli() -> String {
@@ -17,6 +29,20 @@ fn default_cli() -> String {
 
 fn default_language() -> String {
     "en".to_string()
+}
+
+fn default_bridge_bind_addr() -> String {
+    "127.0.0.1:7331".to_string()
+}
+
+impl Default for AiInboxBridgeSettings {
+    fn default() -> Self {
+        Self {
+            bind_addr: default_bridge_bind_addr(),
+            token: String::new(),
+            auto_start: false,
+        }
+    }
 }
 
 impl Default for AppSettings {
@@ -82,6 +108,7 @@ impl Default for AppSettings {
             default_template: "implement_feature".to_string(),
             default_cli: default_cli(),
             language: default_language(),
+            ai_inbox_bridge: AiInboxBridgeSettings::default(),
         }
     }
 }
