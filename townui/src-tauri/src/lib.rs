@@ -109,6 +109,7 @@ pub fn run() {
             // Hooks
             commands::hooks::list_hooks,
             commands::hooks::create_hook,
+            commands::hooks::delete_hook,
             commands::hooks::assign_to_hook,
             commands::hooks::sling,
             commands::hooks::done,

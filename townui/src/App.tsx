@@ -23,7 +23,13 @@ import { useHooks } from "./hooks/useHooks";
 import { useHandoffs } from "./hooks/useHandoffs";
 import { useActors } from "./hooks/useActors";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
-import { TaskItem, executeTask, ingestAIBrief } from "./lib/tauri";
+import {
+  TaskItem,
+  executeTask,
+  getSettings,
+  ingestAIBrief,
+  listCrews,
+} from "./lib/tauri";
 import { AppLanguage, t } from "./lib/i18n";
 
 export default function App() {
@@ -48,6 +54,7 @@ export default function App() {
     hooks,
     loading: hooksLoading,
     addHook,
+    remove: removeHook,
     assign,
     slingNow,
     done,
@@ -74,6 +81,45 @@ export default function App() {
   const [showTaskCreate, setShowTaskCreate] = useState(false);
   const [executeTarget, setExecuteTarget] = useState<TaskItem | null>(null);
   const language: AppLanguage = settings?.language ?? "en";
+
+  const fallbackSplitBrief = (brief: string): string[] => {
+    return brief
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => line.replace(/^[-*]\s+/, ""))
+      .map((line) => line.replace(/^\d+\.\s+/, ""))
+      .filter((line) => line.length > 0);
+  };
+
+  const quickStartTask = async (task: TaskItem) => {
+    try {
+      const crews = await listCrews(task.rig_id);
+      if (crews.length === 0) {
+        setExecuteTarget(task);
+        return;
+      }
+
+      let agentType = "";
+      let templateName = "implement_feature";
+      try {
+        const appSettings = await getSettings();
+        if (appSettings.default_cli?.trim()) {
+          agentType = appSettings.default_cli;
+        }
+        if (appSettings.default_template?.trim()) {
+          templateName = appSettings.default_template;
+        }
+      } catch {
+        // Fall back to backend defaults.
+      }
+
+      await executeTask(task.id, crews[0].id, agentType, templateName);
+      await editTask(task.id, { status: "in_progress" });
+    } catch (e) {
+      alert(`Start failed: ${String(e)}`);
+    }
+  };
 
   // Plumb global hotkeys based on current page
   useGlobalShortcuts(
@@ -218,95 +264,6 @@ export default function App() {
         }
         return (
           <div className="flex flex-col h-full">
-            {/* Terms & Hook/Handoff row – capped height with scroll */}
-            <div className="shrink-0 max-h-[40vh] overflow-y-auto space-y-3 px-4 pt-4 pb-2">
-              <div className="glass-card p-3">
-                <details className="group">
-                  <summary className="text-xs font-semibold cursor-pointer list-none flex items-center gap-2">
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="text-town-text-faint group-open:rotate-90 transition-transform"
-                    >
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                    {t(language, "terms_title")}
-                  </summary>
-                  <ul className="text-xs text-town-text-muted space-y-1 mt-2 ml-5">
-                    <li>• {t(language, "terms_hook")}</li>
-                    <li>• {t(language, "terms_sling")}</li>
-                    <li>• {t(language, "terms_handoff")}</li>
-                    <li>• {t(language, "terms_done")}</li>
-                  </ul>
-                </details>
-              </div>
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                <HookInbox
-                  language={language}
-                  hooks={hooks}
-                  tasks={tasks}
-                  actors={actors}
-                  loading={hooksLoading}
-                  onCreateHook={async (actorId) => {
-                    await addHook(actorId);
-                  }}
-                  onAssign={async (hookId, taskId) => {
-                    await assign(hookId, taskId);
-                  }}
-                  onSling={async (hookId, taskId) => {
-                    await slingNow(hookId, taskId);
-                  }}
-                  onDone={async (hookId, outcome) => {
-                    await done(hookId, outcome);
-                  }}
-                  onResume={async (hookId) => {
-                    await resume(hookId);
-                  }}
-                />
-                <HandoffCenter
-                  language={language}
-                  handoffs={handoffs}
-                  tasks={tasks}
-                  actors={actors}
-                  loading={handoffsLoading}
-                  onCreate={async (
-                    fromActorId,
-                    toActorId,
-                    workItemId,
-                    contextSummary,
-                    blockers,
-                    nextSteps,
-                  ) => {
-                    await addHandoff(
-                      fromActorId,
-                      toActorId,
-                      workItemId,
-                      contextSummary,
-                      blockers,
-                      nextSteps,
-                    );
-                  }}
-                  onAccept={async (handoffId, acceptedByActorId) => {
-                    await accept(handoffId, acceptedByActorId);
-                  }}
-                  onReject={async (handoffId, reason) => {
-                    await reject(handoffId, reason);
-                  }}
-                  onExport={async (handoffId) => {
-                    return await exportHandoffJson(handoffId);
-                  }}
-                  onImport={async (jsonData) => {
-                    await importHandoffJson(jsonData);
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Kanban board fills remaining space */}
             <div className="flex-1 min-h-0">
               <TaskBoard
                 language={language}
@@ -345,6 +302,113 @@ export default function App() {
                     await refreshTasks();
                     return { created, ignoredLines: 0 };
                   }
+                }}
+              />
+            </div>
+          </div>
+        );
+
+      case "dispatch":
+        if (!selectedRig) {
+          return (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center animate-fade-in">
+                <div className="w-14 h-14 rounded-2xl bg-town-surface flex items-center justify-center mx-auto mb-4">
+                  <span className="text-xl text-town-text-faint">📮</span>
+                </div>
+                <p className="text-sm text-town-text-muted">
+                  {t(language, "select_rig_manage_tasks")}
+                </p>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div className="h-full overflow-y-auto p-4 space-y-3">
+            <div className="glass-card p-3">
+              <details className="group">
+                <summary className="text-xs font-semibold cursor-pointer list-none flex items-center gap-2">
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className="text-town-text-faint group-open:rotate-90 transition-transform"
+                  >
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                  {t(language, "terms_title")}
+                </summary>
+                <ul className="text-xs text-town-text-muted space-y-1 mt-2 ml-5">
+                  <li>• {t(language, "terms_hook")}</li>
+                  <li>• {t(language, "terms_sling")}</li>
+                  <li>• {t(language, "terms_handoff")}</li>
+                  <li>• {t(language, "terms_done")}</li>
+                </ul>
+              </details>
+            </div>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+              <HookInbox
+                language={language}
+                hooks={hooks}
+                tasks={tasks}
+                actors={actors}
+                loading={hooksLoading}
+                onCreateHook={async (actorId) => {
+                  await addHook(actorId);
+                }}
+                onDeleteHook={async (hookId) => {
+                  await removeHook(hookId);
+                }}
+                onAssign={async (hookId, taskId) => {
+                  await assign(hookId, taskId);
+                }}
+                onSling={async (hookId, taskId) => {
+                  await slingNow(hookId, taskId);
+                }}
+                onDone={async (hookId, outcome) => {
+                  await done(hookId, outcome);
+                }}
+                onResume={async (hookId) => {
+                  await resume(hookId);
+                }}
+              />
+              <HandoffCenter
+                language={language}
+                handoffs={handoffs}
+                tasks={tasks}
+                actors={actors}
+                loading={handoffsLoading}
+                onCreate={async (
+                  fromActorId,
+                  toActorId,
+                  workItemId,
+                  contextSummary,
+                  blockers,
+                  nextSteps,
+                ) => {
+                  await addHandoff(
+                    fromActorId,
+                    toActorId,
+                    workItemId,
+                    contextSummary,
+                    blockers,
+                    nextSteps,
+                  );
+                }}
+                onAccept={async (handoffId, acceptedByActorId) => {
+                  await accept(handoffId, acceptedByActorId);
+                }}
+                onReject={async (handoffId, reason) => {
+                  await reject(handoffId, reason);
+                }}
+                onExport={async (handoffId) => {
+                  return await exportHandoffJson(handoffId);
+                }}
+                onImport={async (jsonData) => {
+                  await importHandoffJson(jsonData);
                 }}
               />
             </div>

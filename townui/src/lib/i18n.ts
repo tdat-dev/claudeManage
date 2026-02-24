@@ -6,6 +6,7 @@ const en: Dict = {
   // ── Navigation ──
   nav_rigs: "Rigs",
   nav_tasks: "Tasks",
+  nav_dispatch: "Dispatch",
   nav_workers: "Workers",
   nav_runs: "Runs",
   nav_actors: "Actors",
@@ -458,6 +459,7 @@ const vi: Dict = {
   // ── Navigation ──
   nav_rigs: "Dự án",
   nav_tasks: "Công việc",
+  nav_dispatch: "Điều phối",
   nav_workers: "Worker",
   nav_runs: "Lịch sử chạy",
   nav_actors: "Nhân sự",

@@ -380,3 +380,46 @@ pub fn count_commits_ahead(repo_path: &str, base_branch: &str, branch_name: &str
         ))
     }
 }
+
+pub fn commit_all(repo_path: &str, message: &str) -> Result<String, String> {
+    let add_output = Command::new("git")
+        .args(["add", "-A"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git add -A: {}", e))?;
+
+    if !add_output.status.success() {
+        return Err(format!(
+            "git add -A failed: {}",
+            String::from_utf8_lossy(&add_output.stderr).trim()
+        ));
+    }
+
+    let commit_output = Command::new("git")
+        .args(["commit", "-m", message])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git commit: {}", e))?;
+
+    if !commit_output.status.success() {
+        return Err(format!(
+            "git commit failed: {}",
+            String::from_utf8_lossy(&commit_output.stderr).trim()
+        ));
+    }
+
+    let rev_output = Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git rev-parse --short HEAD: {}", e))?;
+
+    if rev_output.status.success() {
+        Ok(String::from_utf8_lossy(&rev_output.stdout).trim().to_string())
+    } else {
+        Err(format!(
+            "git rev-parse --short HEAD failed: {}",
+            String::from_utf8_lossy(&rev_output.stderr).trim()
+        ))
+    }
+}

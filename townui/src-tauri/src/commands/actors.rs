@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::collections::HashSet;
 use tauri::State;
 
 use crate::models::actor::Actor;
@@ -60,13 +61,55 @@ pub fn get_actor(actor_id: String, state: State<AppState>) -> Result<Actor, Stri
 
 #[tauri::command]
 pub fn delete_actor(actor_id: String, state: State<AppState>) -> Result<(), String> {
-    let mut actors = state.actors.lock().unwrap();
-    let idx = actors
-        .iter()
-        .position(|a| a.actor_id == actor_id)
-        .ok_or_else(|| "Actor not found".to_string())?;
-    actors.remove(idx);
-    state.save_actors(&actors);
+    {
+        let mut actors = state.actors.lock().unwrap();
+        let idx = actors
+            .iter()
+            .position(|a| a.actor_id == actor_id)
+            .ok_or_else(|| "Actor not found".to_string())?;
+        actors.remove(idx);
+        state.save_actors(&actors);
+    }
+
+    let removed_hook_ids: HashSet<String> = {
+        let mut hooks = state.hooks.lock().unwrap();
+        let removed_ids = hooks
+            .iter()
+            .filter(|h| h.attached_actor_id == actor_id)
+            .map(|h| h.hook_id.clone())
+            .collect::<HashSet<_>>();
+        if !removed_ids.is_empty() {
+            hooks.retain(|h| h.attached_actor_id != actor_id);
+            state.save_hooks(&hooks);
+        }
+        removed_ids
+    };
+
+    {
+        let mut tasks = state.tasks.lock().unwrap();
+        let mut changed = false;
+        for task in tasks.iter_mut() {
+            let mut task_changed = false;
+            if task.owner_actor_id.as_deref() == Some(actor_id.as_str()) {
+                task.owner_actor_id = None;
+                task_changed = true;
+            }
+            if let Some(hook_id) = task.hook_id.as_deref() {
+                if removed_hook_ids.contains(hook_id) {
+                    task.hook_id = None;
+                    task_changed = true;
+                }
+            }
+            if task_changed {
+                changed = true;
+                task.updated_at = chrono::Utc::now().to_rfc3339();
+            }
+        }
+        if changed {
+            state.save_tasks(&tasks);
+        }
+    }
+
     Ok(())
 }
 

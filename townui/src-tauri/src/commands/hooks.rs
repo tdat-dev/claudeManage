@@ -360,6 +360,41 @@ pub fn create_hook(
 }
 
 #[tauri::command]
+pub fn delete_hook(hook_id: String, state: State<AppState>) -> Result<(), String> {
+    {
+        let mut hooks = state.hooks.lock().unwrap();
+        let idx = hooks
+            .iter()
+            .position(|h| h.hook_id == hook_id)
+            .ok_or_else(|| "Hook not found".to_string())?;
+
+        if hooks[idx].status == HookStatus::Running || hooks[idx].status == HookStatus::Assigned {
+            return Err("Cannot delete active hook. Mark it done first.".to_string());
+        }
+
+        hooks.remove(idx);
+        state.save_hooks(&hooks);
+    }
+
+    {
+        let mut tasks = state.tasks.lock().unwrap();
+        let mut changed = false;
+        for task in tasks.iter_mut() {
+            if task.hook_id.as_deref() == Some(hook_id.as_str()) {
+                task.hook_id = None;
+                task.updated_at = chrono::Utc::now().to_rfc3339();
+                changed = true;
+            }
+        }
+        if changed {
+            state.save_tasks(&tasks);
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn assign_to_hook(
     hook_id: String,
     work_item_id: String,

@@ -218,6 +218,74 @@ fn worker_status_to_str(status: &WorkerStatusEnum) -> &'static str {
     }
 }
 
+fn build_auto_commit_message(task_id: &str, task_title: &str) -> String {
+    let clean_title: String = task_title
+        .replace('\r', " ")
+        .replace('\n', " ")
+        .trim()
+        .chars()
+        .take(72)
+        .collect();
+    let short_task_id: String = task_id.chars().take(8).collect();
+
+    if clean_title.is_empty() {
+        format!("townui: complete task {}", short_task_id)
+    } else {
+        format!("townui: complete task {} - {}", short_task_id, clean_title)
+    }
+}
+
+fn resolve_run_context(
+    state: &AppState,
+    worker_id: &str,
+) -> Option<(String, String, String, String)> {
+    let (crew_id, rig_id, task_id) = {
+        let runs = state.runs.lock().unwrap();
+        let run = runs.iter().find(|r| r.worker_id == worker_id)?;
+        (
+            run.crew_id.clone(),
+            run.rig_id.clone(),
+            run.task_id.clone(),
+        )
+    };
+
+    let crew_path = {
+        let crews = state.crews.lock().unwrap();
+        crews
+            .iter()
+            .find(|c| c.id == crew_id)
+            .map(|c| c.path.clone())?
+    };
+
+    let task_title = {
+        let tasks = state.tasks.lock().unwrap();
+        tasks
+            .iter()
+            .find(|t| t.id == task_id)
+            .map(|t| t.title.clone())
+            .unwrap_or_default()
+    };
+
+    Some((crew_path, rig_id, task_id, task_title))
+}
+
+fn try_auto_commit_for_completed_run(
+    state: &AppState,
+    worker_id: &str,
+) -> Result<Option<(String, String, String)>, String> {
+    let Some((crew_path, rig_id, task_id, task_title)) = resolve_run_context(state, worker_id) else {
+        return Ok(None);
+    };
+
+    if !crate::git::has_uncommitted_changes(&crew_path)? {
+        return Ok(None);
+    }
+
+    let commit_message = build_auto_commit_message(&task_id, &task_title);
+    let commit_hash = crate::git::commit_all(&crew_path, &commit_message)?;
+    Ok(Some((commit_hash, rig_id, task_id)))
+}
+
 fn persist_spawned_worker(
     state: &AppState,
     rig_id: &str,
@@ -337,6 +405,8 @@ fn finalize_worker_exit(
     exit_code: Option<i32>,
 ) {
     let state = app.state::<AppState>();
+    let mut auto_commit_hash: Option<String> = None;
+    let mut auto_commit_error: Option<String> = None;
 
     if final_status == WorkerStatusEnum::Failed {
         let failure_line = match exit_code {
@@ -353,6 +423,45 @@ fn finalize_worker_exit(
 
         if let Err(e) = app.emit("worker-log", (&worker_id, &failure_entry)) {
             eprintln!("Failed to emit worker-log failure entry: {}", e);
+        }
+    }
+
+    if final_status == WorkerStatusEnum::Completed {
+        match try_auto_commit_for_completed_run(&state, &worker_id) {
+            Ok(Some((commit_hash, rig_id, task_id))) => {
+                auto_commit_hash = Some(commit_hash.clone());
+                let info_entry = LogEntry {
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                    stream: "stdout".to_string(),
+                    line: format!("Auto-committed changes: {}", commit_hash),
+                };
+                state.append_worker_log(&worker_id, info_entry.clone());
+                let _ = app.emit("worker-log", (&worker_id, &info_entry));
+
+                state.append_audit_event(&AuditEvent::new(
+                    rig_id,
+                    None,
+                    Some(task_id),
+                    AuditEventType::RunCompleted,
+                    serde_json::json!({
+                        "worker_id": worker_id,
+                        "auto_commit": true,
+                        "commit_hash": commit_hash,
+                    })
+                    .to_string(),
+                ));
+            }
+            Ok(None) => {}
+            Err(e) => {
+                auto_commit_error = Some(e.clone());
+                let warn_entry = LogEntry {
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                    stream: "stderr".to_string(),
+                    line: format!("Auto-commit skipped: {}", e),
+                };
+                state.append_worker_log(&worker_id, warn_entry.clone());
+                let _ = app.emit("worker-log", (&worker_id, &warn_entry));
+            }
         }
     }
 
@@ -462,6 +571,8 @@ fn finalize_worker_exit(
         serde_json::json!({
             "worker_id": worker_id,
             "exit_code": exit_code,
+            "auto_commit_hash": auto_commit_hash,
+            "auto_commit_error": auto_commit_error,
         })
         .to_string(),
     ));

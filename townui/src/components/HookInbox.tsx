@@ -9,6 +9,7 @@ interface HookInboxProps {
   actors: ActorInfo[];
   loading: boolean;
   onCreateHook: (actorId: string) => Promise<void>;
+  onDeleteHook: (hookId: string) => Promise<void>;
   onAssign: (hookId: string, taskId: string) => Promise<void>;
   onSling: (hookId: string, taskId: string) => Promise<void>;
   onDone: (hookId: string, outcome?: string) => Promise<void>;
@@ -29,6 +30,7 @@ export default function HookInbox({
   actors,
   loading,
   onCreateHook,
+  onDeleteHook,
   onAssign,
   onSling,
   onDone,
@@ -123,6 +125,7 @@ export default function HookInbox({
                 tasks={todoTasks}
                 defaultTaskId={defaultTaskId}
                 actorLabel={actorName(hook.attached_actor_id)}
+                onDelete={onDeleteHook}
                 onAssign={onAssign}
                 onSling={onSling}
                 onDone={onDone}
@@ -142,6 +145,7 @@ function HookRow({
   tasks,
   defaultTaskId,
   actorLabel,
+  onDelete,
   onAssign,
   onSling,
   onDone,
@@ -152,12 +156,14 @@ function HookRow({
   tasks: TaskItem[];
   defaultTaskId: string;
   actorLabel: string;
+  onDelete: (hookId: string) => Promise<void>;
   onAssign: (hookId: string, taskId: string) => Promise<void>;
   onSling: (hookId: string, taskId: string) => Promise<void>;
   onDone: (hookId: string, outcome?: string) => Promise<void>;
   onResume: (hookId: string) => Promise<void>;
 }) {
   const [taskId, setTaskId] = useState(defaultTaskId);
+  const [deleting, setDeleting] = useState(false);
 
   const style = statusStyle[hook.status] || statusStyle.idle;
 
@@ -181,6 +187,36 @@ function HookRow({
             📌 task
           </span>
         )}
+        <button
+          onClick={async () => {
+            if (!confirm(`Delete hook ${hook.hook_id.slice(0, 8)}...?`)) return;
+            setDeleting(true);
+            try {
+              await onDelete(hook.hook_id);
+            } finally {
+              setDeleting(false);
+            }
+          }}
+          disabled={deleting || hook.status === "running" || hook.status === "assigned"}
+          className="ml-1 p-1 rounded text-town-text-faint hover:text-red-400 hover:bg-red-500/10 disabled:opacity-40"
+          title={hook.status === "running" || hook.status === "assigned"
+            ? "Cannot delete active hook"
+            : t(language, "delete")}
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+          </svg>
+        </button>
       </div>
 
       {hook.status !== "done" && (

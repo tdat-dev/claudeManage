@@ -234,6 +234,10 @@ export async function createHook(
   return invoke<HookInfo>("create_hook", { rigId, attachedActorId });
 }
 
+export async function deleteHook(hookId: string): Promise<void> {
+  return invoke<void>("delete_hook", { hookId });
+}
+
 export async function assignToHook(
   hookId: string,
   workItemId: string,

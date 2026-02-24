@@ -307,11 +307,11 @@ export default function TaskBoard({
     counts.total > 0 ? Math.round((counts.done / counts.total) * 100) : 0;
 
   return (
-    <div className="flex flex-col h-full animate-fade-in">
+    <div className="flex flex-col h-full animate-fade-in min-h-0">
       {/* Header */}
-      <div className="shrink-0 px-6 pt-5 pb-4 space-y-3">
+      <div className="shrink-0 px-3 sm:px-4 lg:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 space-y-3">
         {/* Title row */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-accent flex items-center justify-center shadow-glow-sm">
               <svg
@@ -340,7 +340,7 @@ export default function TaskBoard({
           <button
             onClick={onCreateClick}
             title={`${t(language, "task_new")} (Ctrl+N)`}
-            className="btn-primary !py-2 !px-4 !text-sm inline-flex items-center gap-2"
+            className="btn-primary !py-2 !px-4 !text-sm inline-flex items-center justify-center gap-2 w-full sm:w-auto"
           >
             <svg
               width="14"
@@ -359,9 +359,9 @@ export default function TaskBoard({
         </div>
 
         {/* Toolbar: search + filters + stats */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-3">
           {/* Search */}
-          <div className="relative flex-1 max-w-xs">
+          <div className="relative w-full lg:flex-1 lg:max-w-sm">
             <svg
               width="14"
               height="14"
@@ -402,27 +402,29 @@ export default function TaskBoard({
           </div>
 
           {/* Priority filter chips */}
-          <div className="flex items-center gap-1">
-            {(["all", "critical", "high", "medium", "low"] as const).map(
-              (p) => (
-                <button
-                  key={p}
-                  onClick={() => setFilterPriority(p)}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${filterPriority === p
-                    ? "bg-town-accent/20 text-town-accent border border-town-accent/30"
-                    : "text-town-text-faint hover:text-town-text-muted hover:bg-town-surface-hover border border-transparent"
-                    }`}
-                >
-                  {p === "all"
-                    ? t(language, "all")
-                    : priorityConfig[p].icon + " " + t(language, priorityConfig[p].labelKey)}
-                </button>
-              ),
-            )}
+          <div className="w-full lg:flex-1 min-w-0">
+            <div className="flex items-center gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {(["all", "critical", "high", "medium", "low"] as const).map(
+                (p) => (
+                  <button
+                    key={p}
+                    onClick={() => setFilterPriority(p)}
+                    className={`shrink-0 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${filterPriority === p
+                      ? "bg-town-accent/20 text-town-accent border border-town-accent/30"
+                      : "text-town-text-faint hover:text-town-text-muted hover:bg-town-surface-hover border border-transparent"
+                      }`}
+                  >
+                    {p === "all"
+                      ? t(language, "all")
+                      : priorityConfig[p].icon + " " + t(language, priorityConfig[p].labelKey)}
+                  </button>
+                ),
+              )}
+            </div>
           </div>
 
           {/* Progress mini bar */}
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2 lg:ml-auto">
             <div className="flex gap-0.5">
               {COLUMNS.map((col) => {
                 const count =
@@ -454,7 +456,7 @@ export default function TaskBoard({
 
         {/* AI Quick Intake */}
         <div className="glass-card p-3">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-2">
             <div>
               <h3 className="text-xs font-semibold text-town-text">
                 AI Quick Intake
@@ -486,7 +488,7 @@ export default function TaskBoard({
                   setAiIntaking(false);
                 }
               }}
-              className="btn-primary !py-1.5 !px-3 !text-xs disabled:opacity-60"
+              className="btn-primary !py-1.5 !px-3 !text-xs disabled:opacity-60 w-full sm:w-auto"
             >
               {aiIntaking ? "Ingesting..." : "Ingest Brief"}
             </button>
@@ -510,7 +512,7 @@ export default function TaskBoard({
       </div>
 
       {/* Board */}
-      <div className="flex-1 flex gap-3 px-4 pb-4 overflow-x-auto min-h-0">
+      <div className="flex-1 flex gap-3 px-3 sm:px-4 pb-4 overflow-x-auto min-h-0 snap-x snap-mandatory">
         {COLUMNS.map((col) => {
           const colTasks = columnTasks(col);
           const isDropTarget = dropTargetCol === col.id;
@@ -526,7 +528,7 @@ export default function TaskBoard({
           return (
             <div
               key={col.id}
-              className={`flex flex-col flex-1 min-w-[240px] max-w-[360px] rounded-xl border transition-all duration-200 ${isDropTarget
+              className={`snap-start flex-none w-[86vw] sm:w-[340px] lg:w-[320px] xl:flex-1 xl:min-w-[260px] xl:max-w-none flex flex-col rounded-xl border transition-all duration-200 ${isDropTarget
                 ? `${col.borderAccent} bg-town-accent/[0.03] shadow-[0_0_24px_rgba(124,92,252,0.08)]`
                 : "border-town-border/25 bg-town-bg/30"
                 }`}
@@ -705,7 +707,7 @@ function TaskCard({
       onDragStart={(e) => onDragStart(e, task.id)}
       onDragEnd={onDragEnd}
       onClick={onClick}
-      className={`group relative rounded-lg border p-2.5 cursor-grab active:cursor-grabbing select-none
+      className={`group relative rounded-lg border p-2.5 sm:p-2.5 cursor-grab active:cursor-grabbing select-none
         transition-all duration-150
         ${isDragging
           ? "opacity-30 scale-95 border-town-accent/40 bg-town-accent/5 rotate-1"
@@ -746,7 +748,7 @@ function TaskCard({
         </div>
 
         {/* Title */}
-        <h4 className="text-[12px] font-semibold leading-snug line-clamp-2 text-town-text/90">
+        <h4 className="text-[12px] sm:text-[12px] font-semibold leading-snug line-clamp-2 text-town-text/90">
           {task.title}
         </h4>
 
@@ -786,7 +788,7 @@ function TaskCard({
 
         {/* Quick actions on hover */}
         <div
-          className="hidden group-hover:flex items-center gap-1 mt-1.5 pt-1.5 border-t border-town-border/15"
+          className="flex items-center gap-1 mt-1.5 pt-1.5 border-t border-town-border/15 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
         >
           {task.status === "todo" && (
@@ -857,13 +859,13 @@ function TaskDetailPanel({
     .filter(Boolean) as TaskItem[];
 
   return (
-    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-stretch" onClick={onClose}>
       {/* Backdrop */}
       <div className="flex-1 bg-black/50 backdrop-blur-sm" />
 
       {/* Panel */}
       <div
-        className="w-[440px] h-full bg-town-surface border-l border-town-border/40 shadow-2xl overflow-y-auto animate-slide-left"
+        className="w-full sm:w-[440px] h-[92vh] sm:h-full bg-town-surface border-t sm:border-t-0 sm:border-l border-town-border/40 shadow-2xl overflow-y-auto animate-slide-left rounded-t-2xl sm:rounded-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
