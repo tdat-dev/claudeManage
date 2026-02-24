@@ -916,6 +916,114 @@ fn spawn_worker_inner(
     Ok(worker)
 }
 
+// ── Startup Priming ──
+
+/// Build the priming context string injected right after an agent starts.
+/// Mirrors Gas Town's `gt prime` / startup context injection.
+fn build_priming_context(state: &AppState, worker_id: &str, crew_name: Option<&str>, task_title: Option<&str>, rig_id: &str) -> String {
+    let custom_template = {
+        let settings = state.settings.lock().unwrap();
+        settings.priming_template.clone()
+    };
+    if let Some(tpl) = custom_template {
+        return tpl
+            .replace("{{rig_id}}", rig_id)
+            .replace("{{worker_id}}", worker_id)
+            .replace("{{crew_name}}", crew_name.unwrap_or(""))
+            .replace("{{task_title}}", task_title.unwrap_or(""));
+    }
+    // Default priming: concise context injection
+    let mut parts = vec![
+        format!("# TownUI Context (do not reply to this message)"),
+        format!("rig: {}", rig_id),
+        format!("worker_id: {}", &worker_id[..8.min(worker_id.len())]),
+    ];
+    if let Some(cn) = crew_name { parts.push(format!("crew: {}", cn)); }
+    if let Some(tt) = task_title { parts.push(format!("task: {}", tt)); }
+    parts.push("# End of context. Proceed with your task.".to_string());
+    parts.join("\n")
+}
+
+fn start_priming_if_enabled(state: &AppState, worker: &Worker, app: &AppHandle) {
+    let (enabled, delay_ms) = {
+        let settings = state.settings.lock().unwrap();
+        (settings.startup_priming_enabled, settings.priming_delay_ms)
+    };
+    if !enabled { return; }
+
+    // Gather context for priming
+    let (crew_name, task_title) = {
+        let crew_name = {
+            let crews = state.crews.lock().unwrap();
+            crews.iter().find(|c| c.id == worker.crew_id).map(|c| c.name.clone())
+        };
+        let task_title = {
+            let runs = state.runs.lock().unwrap();
+            runs.iter()
+                .find(|r| r.worker_id == worker.id)
+                .and_then(|r| {
+                    let tasks = state.tasks.lock().unwrap();
+                    tasks.iter().find(|t| t.id == r.task_id).map(|t| t.title.clone())
+                })
+        };
+        (crew_name, task_title)
+    };
+
+    let priming_text = build_priming_context(
+        state,
+        &worker.id,
+        crew_name.as_deref(),
+        task_title.as_deref(),
+        &worker.rig_id,
+    );
+    let worker_id = worker.id.clone();
+    let app = app.clone();
+
+    thread::Builder::new()
+        .name(format!("priming-{}", &worker_id[..8.min(worker_id.len())]))
+        .spawn(move || {
+            // Wait for agent to initialise
+            thread::sleep(std::time::Duration::from_millis(delay_ms));
+
+            let state = app.state::<AppState>();
+
+            // Check worker is still running before injecting
+            let still_running = {
+                let workers = state.workers.lock().unwrap();
+                workers.iter().any(|w| w.id == worker_id && w.status == WorkerStatusEnum::Running)
+            };
+            if !still_running { return; }
+
+            // Send priming text via PTY writer
+            {
+                let mut writers = state.worker_writers.lock().unwrap();
+                if let Some(writer) = writers.get_mut(&worker_id) {
+                    let _ = writer.write_all(format!("{}\r\n", priming_text).as_bytes());
+                    let _ = writer.flush();
+                }
+            }
+
+            // Mark worker as primed
+            {
+                let mut workers = state.workers.lock().unwrap();
+                if let Some(w) = workers.iter_mut().find(|w| w.id == worker_id) {
+                    w.startup_primed = true;
+                }
+                state.save_workers(&workers);
+            }
+
+            // Log
+            let entry = LogEntry {
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                stream: "system".to_string(),
+                line: "[primed] Startup context injected".to_string(),
+            };
+            state.append_worker_log(&worker_id, entry.clone());
+            let _ = app.emit("worker-log", (&worker_id, &entry));
+        })
+        .ok();
+}
+
 // ── Tauri commands ──
 
 pub(crate) fn spawn_worker_for_actor(
@@ -933,7 +1041,35 @@ pub(crate) fn spawn_worker_for_actor(
         actor_id,
         app.clone(),
     );
-    if res.is_ok() {
+    if let Ok(ref worker) = res {
+        let state = app.state::<AppState>();
+        // set crew_name + task_label on the worker for UI display
+        let (crew_name, task_label) = {
+            let crews = state.crews.lock().unwrap();
+            let cn = crews.iter().find(|c| c.id == worker.crew_id).map(|c| c.name.clone());
+            drop(crews);
+            let tl = {
+                let runs = state.runs.lock().unwrap();
+                runs.iter()
+                    .find(|r| r.worker_id == worker.id)
+                    .and_then(|r| {
+                        let tasks = state.tasks.lock().unwrap();
+                        tasks.iter().find(|t| t.id == r.task_id).map(|t| {
+                            t.title.chars().take(24).collect::<String>()
+                        })
+                    })
+            };
+            (cn, tl)
+        };
+        {
+            let mut workers = state.workers.lock().unwrap();
+            if let Some(w) = workers.iter_mut().find(|w| w.id == worker.id) {
+                w.crew_name = crew_name;
+                w.task_label = task_label;
+            }
+            state.save_workers(&workers);
+        }
+        start_priming_if_enabled(&state, worker, &app);
         let _ = app.emit("data-changed", "");
     }
     res
@@ -1301,4 +1437,245 @@ pub fn write_to_worker(id: String, input: String, state: State<AppState>) -> Res
         .flush()
         .map_err(|e| format!("Flush failed: {}", e))?;
     Ok(())
+}
+
+// ── A/B Testing ──
+
+/// Tag a run with a model identifier (e.g., "claude-sonnet-4", "codex-mini").
+#[tauri::command]
+pub fn set_run_model_tag(run_id: String, model_tag: String, state: State<AppState>) -> Result<(), String> {
+    let mut runs = state.runs.lock().unwrap();
+    let run = runs.iter_mut().find(|r| r.id == run_id).ok_or("Run not found")?;
+    run.model_tag = Some(model_tag);
+    state.save_runs(&runs);
+    Ok(())
+}
+
+/// Record a quality signal [0.0–5.0] on a run (human or automated).
+#[tauri::command]
+pub fn set_run_quality_signal(run_id: String, quality_signal: f32, state: State<AppState>) -> Result<(), String> {
+    let mut runs = state.runs.lock().unwrap();
+    let run = runs.iter_mut().find(|r| r.id == run_id).ok_or("Run not found")?;
+    run.quality_signal = Some(quality_signal.clamp(0.0, 5.0));
+    state.save_runs(&runs);
+    Ok(())
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct ModelStats {
+    pub model_tag: String,
+    pub agent_type: String,
+    pub runs_total: usize,
+    pub runs_completed: usize,
+    pub runs_failed: usize,
+    /// Average completion duration in seconds.
+    pub avg_duration_secs: Option<f64>,
+    /// Average quality signal (only runs that have one).
+    pub avg_quality_signal: Option<f64>,
+    pub avg_revision_count: f64,
+}
+
+/// Return per-model aggregate stats — mirrors Gas Town `bd stats --group-by=model`.
+#[tauri::command]
+pub fn list_run_stats(rig_id: Option<String>, state: State<AppState>) -> Vec<ModelStats> {
+    use std::collections::HashMap;
+    let runs = state.runs.lock().unwrap();
+
+    struct Acc {
+        agent_type: String,
+        total: usize,
+        completed: usize,
+        failed: usize,
+        durations: Vec<f64>,
+        quality_signals: Vec<f32>,
+        revision_counts: Vec<u32>,
+    }
+
+    let mut map: HashMap<String, Acc> = HashMap::new();
+
+    for run in runs.iter() {
+        if rig_id.as_deref().map(|rid| run.rig_id != rid).unwrap_or(false) { continue; }
+        let key = run.model_tag.clone().unwrap_or_else(|| run.agent_type.clone());
+        let acc = map.entry(key.clone()).or_insert_with(|| Acc {
+            agent_type: run.agent_type.clone(),
+            total: 0, completed: 0, failed: 0,
+            durations: vec![], quality_signals: vec![], revision_counts: vec![],
+        });
+        acc.total += 1;
+        match run.status {
+            RunStatus::Completed => acc.completed += 1,
+            RunStatus::Failed => acc.failed += 1,
+            _ => {}
+        }
+        if let (Some(start), Some(end)) = (&run.started_at.parse::<chrono::DateTime<chrono::Utc>>().ok(),
+                                            run.finished_at.as_deref()
+                                                .and_then(|s| s.parse::<chrono::DateTime<chrono::Utc>>().ok())) {
+            acc.durations.push((end - *start).num_seconds() as f64);
+        }
+        if let Some(q) = run.quality_signal { acc.quality_signals.push(q); }
+        acc.revision_counts.push(run.revision_count);
+    }
+
+    let avg = |v: &[f64]| if v.is_empty() { None } else { Some(v.iter().sum::<f64>() / v.len() as f64) };
+    let avg_f32 = |v: &[f32]| if v.is_empty() { None } else { Some(v.iter().map(|&x| x as f64).sum::<f64>() / v.len() as f64) };
+
+    let mut result: Vec<ModelStats> = map.into_iter().map(|(model_tag, acc)| {
+        let avg_rc = if acc.revision_counts.is_empty() { 0.0 }
+                     else { acc.revision_counts.iter().map(|&x| x as f64).sum::<f64>() / acc.revision_counts.len() as f64 };
+        ModelStats {
+            model_tag,
+            agent_type: acc.agent_type,
+            runs_total: acc.total,
+            runs_completed: acc.completed,
+            runs_failed: acc.failed,
+            avg_duration_secs: avg(&acc.durations),
+            avg_quality_signal: avg_f32(&acc.quality_signals),
+            avg_revision_count: avg_rc,
+        }
+    }).collect();
+
+    result.sort_by(|a, b| b.runs_total.cmp(&a.runs_total));
+    result
+}
+
+// ─── Inner helpers for supervisor / witness use ─────────────────────────────
+
+/// Stop a worker without requiring tauri::State — usable from supervisor thread.
+pub fn stop_worker_inner(state: &AppState, id: &str) -> Result<(), String> {
+    let (pid, rig_id, worker_id) = {
+        let mut workers = state.workers.lock().unwrap();
+        let worker = workers
+            .iter_mut()
+            .find(|w| w.id == id)
+            .ok_or_else(|| "Worker not found".to_string())?;
+        let pid = worker.pid;
+        let rid = worker.rig_id.clone();
+        let wid = worker.id.clone();
+        worker.status = WorkerStatusEnum::Stopped;
+        worker.stopped_at = Some(chrono::Utc::now().to_rfc3339());
+        state.save_workers(&workers);
+        (pid, rid, wid)
+    };
+
+    if let Some(p) = pid {
+        kill_process_tree(p);
+    }
+
+    {
+        let mut writers = state.worker_writers.lock().unwrap();
+        writers.remove(&worker_id);
+    }
+    {
+        let mut masters = state.worker_pty_masters.lock().unwrap();
+        masters.remove(&worker_id);
+    }
+
+    state.append_audit_event(&AuditEvent::new(
+        rig_id,
+        None,
+        None,
+        AuditEventType::WorkerStopped,
+        serde_json::json!({ "worker_id": worker_id, "auto": true }).to_string(),
+    ));
+
+    Ok(())
+}
+
+/// Send a nudge newline to a worker's PTY (used by Witness for stuck polecats).
+pub fn nudge_worker_pty(state: &AppState, id: &str) -> Result<(), String> {
+    let mut writers = state.worker_writers.lock().unwrap();
+    if let Some(writer) = writers.get_mut(id) {
+        use std::io::Write;
+        writer.write_all(b"\n").map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Spawn a polecat on a rig without tauri::State wrapper (for Witness cycle).
+pub fn spawn_polecat_inner(state: &AppState, app: &AppHandle, rig_id: &str) -> Result<String, String> {
+    // Get rig path
+    let rig_path = {
+        let rigs = state.rigs.lock().unwrap();
+        rigs.iter()
+            .find(|r| r.id == rig_id)
+            .map(|r| r.path.clone())
+            .ok_or_else(|| "Rig not found".to_string())?
+    };
+
+    let polecat_slug = format!("polecat-{}", &uuid::Uuid::new_v4().to_string()[..8]);
+    let branch_name = format!("polecat/{}", polecat_slug);
+    let wt_dir = state.worktrees_dir().join(rig_id);
+    let _ = std::fs::create_dir_all(&wt_dir);
+    let wt_path = wt_dir.join(&polecat_slug);
+    let wt_path_str = wt_path.to_string_lossy().to_string();
+
+    let base_branch = crate::git::get_current_branch(&rig_path)
+        .unwrap_or_else(|| "main".to_string());
+
+    crate::git::create_worktree(&rig_path, &wt_path_str, &branch_name, &base_branch)?;
+
+    // Register temporary crew
+    let crew = crate::models::crew::Crew::new(
+        rig_id.to_string(),
+        format!("Polecat {}", &polecat_slug[..8]),
+        branch_name,
+        wt_path_str,
+    );
+    let crew_id = crew.id.clone();
+    {
+        let mut crews = state.crews.lock().unwrap();
+        crews.push(crew);
+        state.save_crews(&crews);
+    }
+
+    // Resolve default agent type
+    let agent_type = {
+        let settings = state.settings.lock().unwrap();
+        settings.cli_paths.keys().next().cloned().unwrap_or_else(|| "claude".to_string())
+    };
+
+    let worker = spawn_worker_inner(
+        crew_id,
+        agent_type,
+        String::new(),
+        WorkerType::Polecat,
+        None,
+        app.clone(),
+    )?;
+    Ok(worker.id)
+}
+
+/// Spawn a worker for propulsion — uses crew's default agent_type setting.
+pub fn spawn_worker_for_propulsion(
+    state: &AppState,
+    app: &AppHandle,
+    _rig_id: &str,
+    crew_id: &str,
+    task_id: Option<&str>,
+) -> Result<String, String> {
+    let agent_type = {
+        let settings = state.settings.lock().unwrap();
+        settings.cli_paths.keys().next().cloned().unwrap_or_else(|| "claude".to_string())
+    };
+
+    let prompt = task_id
+        .map(|tid| {
+            let tasks = state.tasks.lock().unwrap();
+            tasks
+                .iter()
+                .find(|t| t.id == tid)
+                .map(|t| format!("Work on task: {}", t.title))
+                .unwrap_or_default()
+        })
+        .unwrap_or_default();
+
+    let worker = spawn_worker_inner(
+        crew_id.to_string(),
+        agent_type,
+        prompt,
+        WorkerType::Crew,
+        None,
+        app.clone(),
+    )?;
+    Ok(worker.id)
 }

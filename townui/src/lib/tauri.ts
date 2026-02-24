@@ -361,6 +361,8 @@ export type ConvoyStatus =
   | "completed"
   | "cancelled";
 
+export type MergeStrategy = "direct" | "mr" | "local";
+
 export interface ConvoyInfo {
   convoy_id: string;
   title: string;
@@ -371,6 +373,11 @@ export interface ConvoyInfo {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  // Gas Town ownership & merge strategy
+  owned: boolean;
+  owner_actor_id: string | null;
+  merge_strategy: MergeStrategy;
+  land_notes: string | null;
 }
 
 export async function listConvoys(): Promise<ConvoyInfo[]> {
@@ -478,6 +485,10 @@ export interface WorkerInfo {
   pid: number | null;
   started_at: string;
   stopped_at: string | null;
+  // Gas Town display fields
+  startup_primed: boolean;
+  task_label: string | null;
+  crew_name: string | null;
 }
 
 export interface LogEntry {
@@ -546,6 +557,21 @@ export interface RunInfo {
   finished_at: string | null;
   exit_code: number | null;
   diff_stats: string | null;
+  // A/B testing fields
+  model_tag: string | null;
+  quality_signal: number | null;
+  revision_count: number;
+}
+
+export interface ModelStats {
+  model_tag: string;
+  agent_type: string;
+  runs_total: number;
+  runs_completed: number;
+  runs_failed: number;
+  avg_duration_secs: number | null;
+  avg_quality_signal: number | null;
+  avg_revision_count: number;
 }
 
 export async function listRuns(rigId: string): Promise<RunInfo[]> {
@@ -588,6 +614,16 @@ export interface AppSettings {
   default_template: string;
   default_cli: string;
   language: "en" | "vi";
+  // Startup priming
+  startup_priming_enabled: boolean;
+  priming_template: string | null;
+  priming_delay_ms: number;
+  // Propulsion & Witness
+  propulsion_enabled: boolean;
+  propulsion_interval_seconds: number;
+  witness_auto_spawn: boolean;
+  max_polecats_per_rig: number;
+  polecat_nudge_after_seconds: number;
 }
 
 export async function getSettings(): Promise<AppSettings> {
@@ -1257,6 +1293,8 @@ export async function cancelWorkflow(
 export interface SeedInfo {
   workflow_template_count: number;
   workflow_template_names: string[];
+  formula_count: number;
+  formula_names: string[];
   prompt_template_count: number;
 }
 
@@ -1268,9 +1306,128 @@ export async function seedWorkflowTemplates(): Promise<string[]> {
   return invoke<string[]>("seed_workflow_templates");
 }
 
+export async function seedGastownFormulas(): Promise<string[]> {
+  return invoke<string[]>("seed_gastown_formulas");
+}
+
 export async function runRigCommand(
   rigId: string,
   command: string,
 ): Promise<TerminalCommandResult> {
   return invoke<TerminalCommandResult>("run_rig_command", { rigId, command });
+}
+
+// ── Cross-rig worktree ──
+
+export async function createCrossRigWorktree(
+  sourceRigId: string,
+  crewId: string,
+  branchName?: string,
+): Promise<string> {
+  return invoke<string>("create_cross_rig_worktree", {
+    sourceRigId,
+    crewId,
+    branchName: branchName ?? null,
+  });
+}
+
+// ── Convoy v2 & Land ──
+
+export async function createConvoyV2(
+  title: string,
+  description: string,
+  rigIds: string[],
+  owned?: boolean,
+  mergeStrategy?: MergeStrategy,
+  ownerActorId?: string,
+): Promise<ConvoyInfo> {
+  return invoke<ConvoyInfo>("create_convoy_v2", {
+    title,
+    description,
+    rigIds,
+    owned: owned ?? false,
+    mergeStrategy: mergeStrategy ?? "direct",
+    ownerActorId: ownerActorId ?? null,
+  });
+}
+
+export async function convoyLand(
+  convoyId: string,
+  landNotes?: string,
+): Promise<ConvoyInfo> {
+  return invoke<ConvoyInfo>("convoy_land", {
+    convoyId,
+    landNotes: landNotes ?? null,
+  });
+}
+
+// ── Polecat spawn ──
+
+export async function spawnPolecat(
+  rigId: string,
+  agentType: string,
+  initialPrompt: string,
+  actorId?: string,
+): Promise<WorkerInfo> {
+  return invoke<WorkerInfo>("spawn_polecat", {
+    rigId,
+    agentType,
+    initialPrompt,
+    actorId: actorId ?? null,
+  });
+}
+
+// ── A/B testing ──
+
+export async function setRunModelTag(runId: string, modelTag: string): Promise<RunInfo> {
+  return invoke<RunInfo>("set_run_model_tag", { runId, modelTag });
+}
+
+export async function setRunQualitySignal(runId: string, qualitySignal: number): Promise<RunInfo> {
+  return invoke<RunInfo>("set_run_quality_signal", { runId, qualitySignal });
+}
+
+export async function listRunStats(rigId?: string): Promise<ModelStats[]> {
+  return invoke<ModelStats[]>("list_run_stats", { rigId: rigId ?? null });
+}
+
+// ── Dog Pool ──
+
+export type DogRole = "boot" | "health_check" | "log_rotation" | "orphan_cleanup" | "hook_repair";
+export type DogStatus = "pending" | "running" | "completed" | "failed";
+
+export interface DogInfo {
+  id: string;
+  rig_id: string | null;
+  role: DogRole;
+  status: DogStatus;
+  result: string | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface DogPoolStatus {
+  total: number;
+  pending: number;
+  running: number;
+  completed: number;
+  failed: number;
+}
+
+export async function listDogs(): Promise<DogInfo[]> {
+  return invoke<DogInfo[]>("list_dogs");
+}
+
+export async function getDogPoolStatus(): Promise<DogPoolStatus> {
+  return invoke<DogPoolStatus>("get_dog_pool_status");
+}
+
+export async function spawnDog(role: DogRole, rigId?: string): Promise<DogInfo> {
+  return invoke<DogInfo>("spawn_dog", { role, rigId: rigId ?? null });
+}
+
+export async function pruneDogs(): Promise<number> {
+  return invoke<number>("prune_dogs");
 }

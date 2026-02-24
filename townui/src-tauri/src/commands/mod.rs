@@ -1,6 +1,7 @@
 pub mod actors;
 pub mod ai_inbox;
 pub mod audit;
+pub mod dogs;
 pub mod convoys;
 pub mod crews;
 pub mod handoffs;

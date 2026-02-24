@@ -599,10 +599,19 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
                       <span
                         className={`w-2.5 h-2.5 rounded-full shrink-0 ${st.dot} ${w.status === "running" ? "animate-pulse" : ""}`}
                       />
-                      {/* Agent name */}
+                      {/* Agent name  — prefer crew_name if available */}
                       <span className="text-xs font-bold uppercase tracking-widest truncate text-town-text">
-                        {w.agent_type}
+                        {w.crew_name ?? w.agent_type}
                       </span>
+                      {/* Task label badge */}
+                      {w.task_label && (
+                        <span
+                          className="text-[10px] bg-town-accent/10 text-town-accent px-1.5 py-0.5 rounded-md font-medium truncate max-w-[120px]"
+                          title={`Task: ${w.task_label}`}
+                        >
+                          📋 {w.task_label}
+                        </span>
+                      )}
                       {/* Actor identity */}
                       {w.actor_id && actorName(w.actor_id) && (
                         <span

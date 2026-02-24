@@ -311,40 +311,223 @@ fn reconcile_queue_inner(state: &AppState, rig_id: Option<&str>, app: Option<&Ap
     }
 }
 
+/// Propulsion: for each rig that has pending Todo tasks but no running workers,
+/// auto-spawn a worker on the first idle crew in that rig.
+fn run_propulsion_cycle(state: &AppState, app: &AppHandle) {
+    let (tasks_snapshot, workers_snapshot, crews_snapshot) = {
+        let t = state.tasks.lock().unwrap();
+        let w = state.workers.lock().unwrap();
+        let c = state.crews.lock().unwrap();
+        (t.clone(), w.clone(), c.clone())
+    };
+
+    // Collect rig_ids that have at least one running worker
+    let busy_rigs: HashSet<String> = workers_snapshot
+        .iter()
+        .filter(|w| w.status == WorkerStatusEnum::Running)
+        .map(|w| w.rig_id.clone())
+        .collect();
+
+    // Collect rig_ids that have at least one Todo task
+    let rigs_with_work: HashSet<String> = tasks_snapshot
+        .iter()
+        .filter(|t| t.status == TaskStatus::Todo)
+        .map(|t| t.rig_id.clone())
+        .collect();
+
+    // Find rigs that need propulsion = have work but no running worker
+    let rigs_to_push: Vec<String> = rigs_with_work
+        .into_iter()
+        .filter(|rid| !busy_rigs.contains(rid))
+        .collect();
+
+    if rigs_to_push.is_empty() {
+        return;
+    }
+
+    for rig_id in &rigs_to_push {
+        // Pick the first active crew in this rig
+        let crew_id = match crews_snapshot.iter().find(|c| {
+            &c.rig_id == rig_id
+                && c.status == crate::models::crew::CrewStatus::Active
+        }) {
+            Some(c) => c.id.clone(),
+            None => continue,
+        };
+
+        let task_id = tasks_snapshot
+            .iter()
+            .find(|t| &t.rig_id == rig_id && t.status == TaskStatus::Todo)
+            .map(|t| t.id.clone());
+
+        let spawn_result = crate::commands::workers::spawn_worker_for_propulsion(
+            state,
+            app,
+            rig_id,
+            &crew_id,
+            task_id.as_deref(),
+        );
+        match spawn_result {
+            Ok(worker_id) => {
+                state.append_audit_event(&AuditEvent::new(
+                    rig_id.clone(),
+                    None,
+                    task_id,
+                    AuditEventType::WorkerSpawned,
+                    serde_json::json!({
+                        "propulsion": true,
+                        "crew_id": crew_id,
+                        "worker_id": worker_id,
+                    }).to_string(),
+                ));
+            }
+            Err(e) => {
+                eprintln!("[propulsion] failed to spawn worker for rig {rig_id}: {e}");
+            }
+        }
+    }
+
+    let _ = app.emit("data-changed", "");
+}
+
+/// Witness: per-rig polecat lifecycle management.
+/// - Spawn polecats for rigs that have no running polecat but have open hooks.
+/// - Nudge stuck polecats (no heartbeat for > polecat_nudge_after_seconds).
+/// - Recycle (stop) polecats for rigs that have no remaining hooks.
+fn run_witness_cycle(state: &AppState, app: &AppHandle) {
+    let (max_polecats, nudge_after_seconds) = {
+        let settings = state.settings.lock().unwrap();
+        (
+            settings.max_polecats_per_rig,
+            settings.polecat_nudge_after_seconds,
+        )
+    };
+
+    let rig_ids: Vec<String> = {
+        let rigs = state.rigs.lock().unwrap();
+        rigs.iter().map(|r| r.id.clone()).collect()
+    };
+
+    for rig_id in &rig_ids {
+        // Count open hooks on this rig
+        let open_hooks: usize = {
+            let hooks = state.hooks.lock().unwrap();
+            hooks
+                .iter()
+                .filter(|h| h.rig_id == *rig_id && h.status == HookStatus::Idle)
+                .count()
+        };
+
+        // Get polecats on this rig
+        let polecat_workers: Vec<crate::models::worker::Worker> = {
+            let workers = state.workers.lock().unwrap();
+            workers
+                .iter()
+                .filter(|w| {
+                    w.rig_id == *rig_id
+                        && w.worker_type == crate::models::worker::WorkerType::Polecat
+                        && w.status == WorkerStatusEnum::Running
+                })
+                .cloned()
+                .collect()
+        };
+
+        let running_polecats = polecat_workers.len();
+
+        // Recycle polecats if no open hooks remain
+        if open_hooks == 0 && running_polecats > 0 {
+            for pw in &polecat_workers {
+                eprintln!("[witness] recycling idle polecat {} on rig {rig_id}", pw.id);
+                let _ = crate::commands::workers::stop_worker_inner(state, &pw.id);
+            }
+            continue;
+        }
+
+        // Nudge stuck polecats
+        let now_ts = chrono::Utc::now().timestamp() as u64;
+        for pw in &polecat_workers {
+            if let Ok(started) = chrono::DateTime::parse_from_rfc3339(&pw.started_at) {
+                let elapsed = now_ts.saturating_sub(started.timestamp() as u64);
+                if elapsed > nudge_after_seconds {
+                    // Send a nudge character to the PTY
+                    let _ = crate::commands::workers::nudge_worker_pty(state, &pw.id);
+                    eprintln!("[witness] nudged polecat {} (elapsed {elapsed}s)", pw.id);
+                }
+            }
+        }
+
+        // Spawn new polecats up to max if we have open hooks
+        if open_hooks > 0 && running_polecats < max_polecats {
+            let to_spawn = (max_polecats - running_polecats).min(open_hooks);
+            for _ in 0..to_spawn {
+                let result = crate::commands::workers::spawn_polecat_inner(state, app, rig_id);
+                match result {
+                    Ok(id) => eprintln!("[witness] spawned polecat {id} on rig {rig_id}"),
+                    Err(e) => eprintln!("[witness] failed to spawn polecat on rig {rig_id}: {e}"),
+                }
+            }
+        }
+    }
+
+    let _ = app.emit("data-changed", "");
+}
+
 fn spawn_supervisor_loop(app: AppHandle) {
     let _ = thread::Builder::new()
         .name("town-supervisor".to_string())
-        .spawn(move || loop {
-            let (running, interval, auto_refinery_sync) = {
-                let state = app.state::<AppState>();
-                let sup = state.supervisor.lock().unwrap();
-                (
-                    sup.running,
-                    sup.loop_interval_seconds.max(5),
-                    sup.auto_refinery_sync,
-                )
-            };
-            if !running {
-                break;
-            }
-            let state = app.state::<AppState>();
-            let _ = reconcile_queue_inner(&state, None, Some(&app));
-            if auto_refinery_sync {
-                let rig_ids: Vec<String> = {
-                    let rigs = state.rigs.lock().unwrap();
-                    rigs.iter().map(|r| r.id.clone()).collect()
+        .spawn(move || {
+            let mut propulsion_tick: u64 = 0;
+            loop {
+                let (running, interval, auto_refinery_sync) = {
+                    let state = app.state::<AppState>();
+                    let sup = state.supervisor.lock().unwrap();
+                    (
+                        sup.running,
+                        sup.loop_interval_seconds.max(5),
+                        sup.auto_refinery_sync,
+                    )
                 };
-                for rid in rig_ids {
-                    let _ = crate::commands::refinery::sync_rig_inner(
-                        &state,
-                        Some(&app),
-                        &rid,
-                        None,
-                        false,
-                    );
+                if !running {
+                    break;
                 }
+                let state = app.state::<AppState>();
+                let _ = reconcile_queue_inner(&state, None, Some(&app));
+                if auto_refinery_sync {
+                    let rig_ids: Vec<String> = {
+                        let rigs = state.rigs.lock().unwrap();
+                        rigs.iter().map(|r| r.id.clone()).collect()
+                    };
+                    for rid in rig_ids {
+                        let _ = crate::commands::refinery::sync_rig_inner(
+                            &state,
+                            Some(&app),
+                            &rid,
+                            None,
+                            false,
+                        );
+                    }
+                }
+
+                // Propulsion enforcement
+                propulsion_tick += interval;
+                let (propulsion_enabled, propulsion_interval, witness_auto_spawn) = {
+                    let settings = state.settings.lock().unwrap();
+                    (
+                        settings.propulsion_enabled,
+                        settings.propulsion_interval_seconds.max(10),
+                        settings.witness_auto_spawn,
+                    )
+                };
+                if propulsion_enabled && propulsion_tick >= propulsion_interval {
+                    propulsion_tick = 0;
+                    run_propulsion_cycle(&state, &app);
+                }
+                if witness_auto_spawn {
+                    run_witness_cycle(&state, &app);
+                }
+
+                thread::sleep(Duration::from_secs(interval));
             }
-            thread::sleep(Duration::from_secs(interval));
         });
 }
 

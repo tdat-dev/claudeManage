@@ -1,7 +1,7 @@
 use tauri::State;
 
 use crate::models::audit::{AuditEvent, AuditEventType};
-use crate::models::convoy::{Convoy, ConvoyStatus};
+use crate::models::convoy::{Convoy, ConvoyStatus, MergeStrategy};
 use crate::state::AppState;
 
 pub(crate) fn create_convoy_internal(
@@ -126,6 +126,113 @@ pub fn add_item_to_convoy(
     Ok(updated)
 }
 
+/// Extended create that supports ownership and merge strategy — mirrors `gt convoy create --owned --merge`.
+#[tauri::command]
+pub fn create_convoy_v2(
+    title: String,
+    description: String,
+    rig_ids: Vec<String>,
+    owned: bool,
+    merge_strategy: Option<MergeStrategy>,
+    owner_actor_id: Option<String>,
+    state: State<AppState>,
+) -> Result<Convoy, String> {
+    let mut convoy = create_convoy_internal(&state, title, description, rig_ids, Some("ui_v2"));
+    convoy.owned = owned;
+    convoy.owner_actor_id = owner_actor_id.clone();
+    convoy.merge_strategy = merge_strategy.unwrap_or_default();
+
+    // Persist the updated ownership fields
+    let mut convoys = state.convoys.lock().unwrap();
+    if let Some(c) = convoys.iter_mut().find(|c| c.convoy_id == convoy.convoy_id) {
+        c.owned = convoy.owned;
+        c.owner_actor_id = convoy.owner_actor_id.clone();
+        c.merge_strategy = convoy.merge_strategy.clone();
+    }
+    state.save_convoys(&convoys);
+    drop(convoys);
+
+    Ok(convoy)
+}
+
+/// Land an owned convoy: mark all open work items as Done, close convoy as Completed.
+/// Mirrors `gt convoy land`.
+#[tauri::command]
+pub fn convoy_land(
+    convoy_id: String,
+    land_notes: Option<String>,
+    state: State<AppState>,
+) -> Result<Convoy, String> {
+    // Collect work_item_ids + rig first
+    let (work_item_ids, rig_id) = {
+        let convoys = state.convoys.lock().unwrap();
+        let c = convoys
+            .iter()
+            .find(|c| c.convoy_id == convoy_id)
+            .ok_or_else(|| "Convoy not found".to_string())?;
+        if !c.owned {
+            return Err("convoy_land is only valid for owned convoys".to_string());
+        }
+        (c.work_item_ids.clone(), c.rig_ids.first().cloned().unwrap_or_default())
+    };
+
+    // Mark all open tasks as Done
+    {
+        let mut tasks = state.tasks.lock().unwrap();
+        for task in tasks.iter_mut() {
+            if work_item_ids.contains(&task.id)
+                && task.status != crate::models::task::TaskStatus::Done
+                && task.status != crate::models::task::TaskStatus::Cancelled
+            {
+                task.status = crate::models::task::TaskStatus::Done;
+                task.completed_at = Some(chrono::Utc::now().to_rfc3339());
+                state.append_audit_event(&AuditEvent::new(
+                    task.rig_id.clone(),
+                    None,
+                    Some(task.id.clone()),
+                    AuditEventType::TaskUpdated,
+                    serde_json::json!({
+                        "action": "convoy_land_auto_close",
+                        "convoy_id": convoy_id,
+                    })
+                    .to_string(),
+                ));
+            }
+        }
+        state.save_tasks(&tasks);
+    }
+
+    // Close convoy
+    let updated = {
+        let mut convoys = state.convoys.lock().unwrap();
+        let c = convoys
+            .iter_mut()
+            .find(|c| c.convoy_id == convoy_id)
+            .ok_or_else(|| "Convoy not found".to_string())?;
+        c.status = ConvoyStatus::Completed;
+        c.completed_at = Some(chrono::Utc::now().to_rfc3339());
+        c.updated_at = chrono::Utc::now().to_rfc3339();
+        c.land_notes = land_notes.clone();
+        let u = c.clone();
+        state.save_convoys(&convoys);
+        u
+    };
+
+    state.append_audit_event(&AuditEvent::new(
+        rig_id,
+        None,
+        None,
+        AuditEventType::ConvoyCompleted,
+        serde_json::json!({
+            "convoy_id": convoy_id,
+            "action": "convoy_land",
+            "land_notes": land_notes,
+        })
+        .to_string(),
+    ));
+
+    Ok(updated)
+}
 #[tauri::command]
 pub fn update_convoy_status(
     convoy_id: String,

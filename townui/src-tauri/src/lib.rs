@@ -97,6 +97,7 @@ pub fn run() {
             commands::crews::delete_crew,
             commands::crews::list_branches,
             commands::crews::get_crew_presets,
+            commands::crews::create_cross_rig_worktree,
             // Tasks
             commands::tasks::list_tasks,
             commands::tasks::create_task,
@@ -129,8 +130,10 @@ pub fn run() {
             commands::convoys::list_convoys,
             commands::convoys::get_convoy,
             commands::convoys::create_convoy,
+            commands::convoys::create_convoy_v2,
             commands::convoys::add_item_to_convoy,
             commands::convoys::update_convoy_status,
+            commands::convoys::convoy_land,
             // Actors
             commands::actors::list_actors,
             commands::actors::create_actor,
@@ -151,6 +154,10 @@ pub fn run() {
             commands::workers::open_in_explorer,
             commands::workers::write_to_worker,
             commands::workers::resize_worker_pty,
+            commands::workers::spawn_polecat,
+            commands::workers::set_run_model_tag,
+            commands::workers::set_run_quality_signal,
+            commands::workers::list_run_stats,
             // Templates
             commands::templates::list_templates,
             commands::templates::render_template,
@@ -198,8 +205,14 @@ pub fn run() {
             commands::workflows::get_ready_steps,
             commands::workflows::advance_step,
             commands::workflows::cancel_workflow,
+            // Dog pool
+            commands::dogs::list_dogs,
+            commands::dogs::get_dog_pool_status,
+            commands::dogs::spawn_dog,
+            commands::dogs::prune_dogs,
             // Seed
             commands::seed::seed_workflow_templates,
+            commands::seed::seed_gastown_formulas,
             commands::seed::get_seed_info,
             commands::terminal::run_rig_command,
         ])

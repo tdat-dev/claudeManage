@@ -15,6 +15,7 @@ use crate::models::actor::Actor;
 use crate::models::audit::AuditEvent;
 use crate::models::convoy::Convoy;
 use crate::models::crew::Crew;
+use crate::models::dog::Dog;
 use crate::models::handoff::Handoff;
 use crate::models::hook::Hook;
 use crate::models::rig::Rig;
@@ -100,6 +101,7 @@ pub struct AppState {
     pub actors: Mutex<Vec<Actor>>,
     pub workers: Mutex<Vec<Worker>>,
     pub runs: Mutex<Vec<Run>>,
+    pub dogs: Mutex<Vec<Dog>>,
     pub worker_logs: Mutex<HashMap<String, Vec<LogEntry>>>,
     pub worker_writers: Mutex<HashMap<String, WorkerWriter>>,
     pub worker_pty_masters: Mutex<HashMap<String, PtyMasterHandle>>,
@@ -161,6 +163,7 @@ impl AppState {
             actors: Mutex::new(actors),
             workers: Mutex::new(workers),
             runs: Mutex::new(runs),
+            dogs: Mutex::new(Vec::new()),
             worker_logs: Mutex::new(HashMap::new()),
             worker_writers: Mutex::new(HashMap::new()),
             worker_pty_masters: Mutex::new(HashMap::new()),

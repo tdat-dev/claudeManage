@@ -6,6 +6,7 @@ import {
   TaskItem,
   listTasks,
   RigInfo,
+  convoyLand,
 } from "../lib/tauri";
 
 interface ConvoyBoardProps {
@@ -47,6 +48,7 @@ export default function ConvoyBoard({
   const [description, setDescription] = useState("");
   const [addingItemTo, setAddingItemTo] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState("");
+  const [landingId, setLandingId] = useState<string | null>(null);
 
   // Load all tasks from selected rig for linking
   useEffect(() => {
@@ -60,6 +62,21 @@ export default function ConvoyBoard({
     setTitle("");
     setDescription("");
     setShowCreate(false);
+  };
+
+  const handleLand = async (convoyId: string) => {
+    setLandingId(convoyId);
+    try {
+      await convoyLand(convoyId);
+      // Refresh tasks after land
+      if (selectedRigId) {
+        listTasks(selectedRigId).then(setTasks).catch(console.error);
+      }
+    } catch (e) {
+      console.error("convoy_land failed:", e);
+    } finally {
+      setLandingId(null);
+    }
   };
 
   const handleAddItem = async (convoyId: string) => {
@@ -187,7 +204,7 @@ export default function ConvoyBoard({
               {/* Convoy header */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-sm font-semibold truncate">
                       {convoy.title}
                     </h3>
@@ -196,6 +213,18 @@ export default function ConvoyBoard({
                     >
                       {convoy.status}
                     </span>
+                    {/* Owned badge */}
+                    {convoy.owned && (
+                      <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-yellow-500/20 text-yellow-400">
+                        🔒 owned
+                      </span>
+                    )}
+                    {/* Merge strategy chip */}
+                    {convoy.merge_strategy && convoy.merge_strategy !== "direct" && (
+                      <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-purple-500/20 text-purple-400">
+                        ⬡ {convoy.merge_strategy}
+                      </span>
+                    )}
                   </div>
                   {convoy.description && (
                     <p className="text-xs text-town-text-muted mt-1 line-clamp-2">
@@ -204,23 +233,36 @@ export default function ConvoyBoard({
                   )}
                 </div>
 
-                {/* Status changer */}
-                <select
-                  value={convoy.status}
-                  onChange={(e) =>
-                    changeStatus(
-                      convoy.convoy_id,
-                      e.target.value as ConvoyStatus,
-                    )
-                  }
-                  className="px-2 py-1 text-[10px] bg-town-bg border border-town-border rounded-md text-town-text-muted focus:outline-none"
-                >
-                  {statusOptions.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-1 shrink-0">
+                  {/* Land button — only for active owned convoys */}
+                  {convoy.owned && convoy.status === "active" && (
+                    <button
+                      onClick={() => handleLand(convoy.convoy_id)}
+                      disabled={landingId === convoy.convoy_id}
+                      className="px-2 py-1 text-[10px] font-medium bg-green-500/20 text-green-400 rounded hover:bg-green-500/30 disabled:opacity-50 transition-colors"
+                      title="Land convoy — close all tasks and complete"
+                    >
+                      {landingId === convoy.convoy_id ? "…" : "🛬 Land"}
+                    </button>
+                  )}
+                  {/* Status changer */}
+                  <select
+                    value={convoy.status}
+                    onChange={(e) =>
+                      changeStatus(
+                        convoy.convoy_id,
+                        e.target.value as ConvoyStatus,
+                      )
+                    }
+                    className="px-2 py-1 text-[10px] bg-town-bg border border-town-border rounded-md text-town-text-muted focus:outline-none"
+                  >
+                    {statusOptions.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {/* Progress bar */}
