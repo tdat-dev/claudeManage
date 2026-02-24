@@ -4,9 +4,10 @@ pub mod models;
 pub mod state;
 pub mod templates;
 
+use notify::{recommended_watcher, EventKind, RecursiveMode, Watcher};
 use models::worker::WorkerStatusEnum;
 use state::AppState;
-use tauri::{Manager, RunEvent};
+use tauri::{Emitter, Manager, RunEvent};
 
 /// Kill a process tree by PID (used during shutdown cleanup).
 fn kill_pid(pid: u32) {
@@ -24,11 +25,65 @@ fn kill_pid(pid: u32) {
     }
 }
 
+fn start_tasks_file_watch(app_handle: tauri::AppHandle) {
+    let watch_dir = app_handle.state::<AppState>().town_dir.clone();
+    std::thread::Builder::new()
+        .name("tasks-file-watch".to_string())
+        .spawn(move || {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let mut watcher = match recommended_watcher(move |result| {
+                let _ = tx.send(result);
+            }) {
+                Ok(w) => w,
+                Err(err) => {
+                    eprintln!("[watch] failed to initialize tasks watcher: {}", err);
+                    return;
+                }
+            };
+
+            if let Err(err) = watcher.watch(&watch_dir, RecursiveMode::NonRecursive) {
+                eprintln!("[watch] failed to watch {}: {}", watch_dir.display(), err);
+                return;
+            }
+
+            while let Ok(event_result) = rx.recv() {
+                let Ok(event) = event_result else {
+                    continue;
+                };
+
+                let is_supported_kind = matches!(
+                    event.kind,
+                    EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
+                );
+                if !is_supported_kind {
+                    continue;
+                }
+
+                let touches_tasks = event
+                    .paths
+                    .iter()
+                    .any(|p| p.file_name().map(|n| n == "tasks.json").unwrap_or(false));
+                if !touches_tasks {
+                    continue;
+                }
+
+                let state = app_handle.state::<AppState>();
+                let _ = state.reload_tasks_from_disk();
+                let _ = app_handle.emit("data-changed", "");
+            }
+        })
+        .ok();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
+        .setup(|app| {
+            start_tasks_file_watch(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // Rigs
             commands::rigs::list_rigs,

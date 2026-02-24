@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tokio::sync::oneshot;
 
@@ -114,6 +114,19 @@ pub struct AppState {
 }
 
 impl AppState {
+    fn strip_utf8_bom(content: &str) -> &str {
+        content.strip_prefix('\u{feff}').unwrap_or(content)
+    }
+
+    fn load_json_vec_from_path<T: serde::de::DeserializeOwned>(path: &Path) -> Vec<T> {
+        if path.exists() {
+            let data = fs::read_to_string(path).unwrap_or_else(|_| "[]".to_string());
+            serde_json::from_str(Self::strip_utf8_bom(&data)).unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    }
+
     pub fn new() -> Self {
         let town_dir = dirs::home_dir()
             .expect("Could not find home directory")
@@ -166,7 +179,7 @@ impl AppState {
         let path = town_dir.join(filename);
         if path.exists() {
             let data = fs::read_to_string(&path).unwrap_or_else(|_| "[]".to_string());
-            serde_json::from_str(&data).unwrap_or_default()
+            serde_json::from_str(Self::strip_utf8_bom(&data)).unwrap_or_default()
         } else {
             Vec::new()
         }
@@ -176,7 +189,7 @@ impl AppState {
         let path = town_dir.join(filename);
         if path.exists() {
             let data = fs::read_to_string(&path).unwrap_or_else(|_| "{}".to_string());
-            serde_json::from_str(&data).unwrap_or_default()
+            serde_json::from_str(Self::strip_utf8_bom(&data)).unwrap_or_default()
         } else {
             T::default()
         }
@@ -198,6 +211,18 @@ impl AppState {
 
     pub fn save_tasks(&self, tasks: &[Task]) {
         self.save_json(tasks, "tasks.json");
+    }
+
+    pub fn tasks_file_path(&self) -> PathBuf {
+        self.town_dir.join("tasks.json")
+    }
+
+    pub fn reload_tasks_from_disk(&self) -> usize {
+        let loaded: Vec<Task> = Self::load_json_vec_from_path(&self.tasks_file_path());
+        let count = loaded.len();
+        let mut tasks = self.tasks.lock().unwrap();
+        *tasks = loaded;
+        count
     }
 
     pub fn save_hooks(&self, hooks: &[Hook]) {
