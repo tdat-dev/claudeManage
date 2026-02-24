@@ -3,6 +3,7 @@ import {
   HookInfo,
   listHooks,
   createHook,
+  deleteHook,
   assignToHook,
   sling,
   doneHook,
@@ -109,6 +110,17 @@ export function useHooks(rigId: string | null) {
     }
   }, []);
 
+  const remove = useCallback(async (hookId: string) => {
+    try {
+      setError(null);
+      await deleteHook(hookId);
+      setHooks((prev) => prev.filter((h) => h.hook_id !== hookId));
+    } catch (e) {
+      setError(String(e));
+      throw e;
+    }
+  }, []);
+
   return {
     hooks,
     loading,
@@ -119,5 +131,6 @@ export function useHooks(rigId: string | null) {
     slingNow,
     done,
     resume,
+    remove,
   };
 }

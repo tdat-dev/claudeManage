@@ -434,6 +434,7 @@ pub fn render_template(
 
 pub fn render_builtin_template(
     template_name: &str,
+    agent_cli: &str,
     task_title: &str,
     task_description: &str,
     rig_name: &str,
@@ -453,8 +454,21 @@ pub fn render_builtin_template(
     vars.insert("rig.name".to_string(), rig_name.to_string());
     vars.insert("crew.branch".to_string(), crew_branch.to_string());
     vars.insert("repo.root".to_string(), repo_root.to_string());
+    vars.insert("agent.cli".to_string(), agent_cli.to_string());
 
-    render_template(&template, &vars)
+    let rendered = render_template(&template, &vars);
+
+    let cli = agent_cli.trim();
+    if cli.is_empty() {
+        rendered
+    } else {
+        let hint = match cli.to_ascii_lowercase().as_str() {
+            "codex" => "Runtime CLI: codex. Prefer concise, deterministic execution and explicit final output.",
+            "claude" => "Runtime CLI: claude. Prefer clear stepwise reasoning and implementation summary.",
+            _ => "Runtime CLI: use the selected default agent and adapt commands/flow accordingly.",
+        };
+        format!("{}\n{}\n\n{}", hint, format!("Selected CLI: {}", cli), rendered)
+    }
 }
 
 /// Extract all `{{var}}` variable names from a template string.

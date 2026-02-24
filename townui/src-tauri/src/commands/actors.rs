@@ -1,7 +1,23 @@
+use serde::Serialize;
+use std::collections::HashSet;
 use tauri::State;
 
 use crate::models::actor::Actor;
+use crate::models::task::TaskStatus;
+use crate::models::worker::WorkerStatusEnum;
 use crate::state::AppState;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ActorHealth {
+    pub actor_id: String,
+    pub rig_id: String,
+    pub tasks_total: usize,
+    pub tasks_in_progress: usize,
+    pub tasks_blocked: usize,
+    pub hook_status: Option<String>,
+    pub last_heartbeat: Option<String>,
+    pub has_running_worker: bool,
+}
 
 #[tauri::command]
 pub fn list_actors(rig_id: String, state: State<AppState>) -> Vec<Actor> {
@@ -45,12 +61,112 @@ pub fn get_actor(actor_id: String, state: State<AppState>) -> Result<Actor, Stri
 
 #[tauri::command]
 pub fn delete_actor(actor_id: String, state: State<AppState>) -> Result<(), String> {
-    let mut actors = state.actors.lock().unwrap();
-    let idx = actors
-        .iter()
-        .position(|a| a.actor_id == actor_id)
-        .ok_or_else(|| "Actor not found".to_string())?;
-    actors.remove(idx);
-    state.save_actors(&actors);
+    {
+        let mut actors = state.actors.lock().unwrap();
+        let idx = actors
+            .iter()
+            .position(|a| a.actor_id == actor_id)
+            .ok_or_else(|| "Actor not found".to_string())?;
+        actors.remove(idx);
+        state.save_actors(&actors);
+    }
+
+    let removed_hook_ids: HashSet<String> = {
+        let mut hooks = state.hooks.lock().unwrap();
+        let removed_ids = hooks
+            .iter()
+            .filter(|h| h.attached_actor_id == actor_id)
+            .map(|h| h.hook_id.clone())
+            .collect::<HashSet<_>>();
+        if !removed_ids.is_empty() {
+            hooks.retain(|h| h.attached_actor_id != actor_id);
+            state.save_hooks(&hooks);
+        }
+        removed_ids
+    };
+
+    {
+        let mut tasks = state.tasks.lock().unwrap();
+        let mut changed = false;
+        for task in tasks.iter_mut() {
+            let mut task_changed = false;
+            if task.owner_actor_id.as_deref() == Some(actor_id.as_str()) {
+                task.owner_actor_id = None;
+                task_changed = true;
+            }
+            if let Some(hook_id) = task.hook_id.as_deref() {
+                if removed_hook_ids.contains(hook_id) {
+                    task.hook_id = None;
+                    task_changed = true;
+                }
+            }
+            if task_changed {
+                changed = true;
+                task.updated_at = chrono::Utc::now().to_rfc3339();
+            }
+        }
+        if changed {
+            state.save_tasks(&tasks);
+        }
+    }
+
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_actor_health(actor_id: String, state: State<AppState>) -> Result<ActorHealth, String> {
+    let actor = {
+        let actors = state.actors.lock().unwrap();
+        actors
+            .iter()
+            .find(|a| a.actor_id == actor_id)
+            .cloned()
+            .ok_or_else(|| "Actor not found".to_string())?
+    };
+
+    let tasks = state.tasks.lock().unwrap();
+    let actor_tasks: Vec<_> = tasks
+        .iter()
+        .filter(|t| t.rig_id == actor.rig_id && t.owner_actor_id.as_deref() == Some(actor.actor_id.as_str()))
+        .collect();
+
+    let tasks_total = actor_tasks.len();
+    let tasks_in_progress = actor_tasks
+        .iter()
+        .filter(|t| t.status == TaskStatus::InProgress)
+        .count();
+    let tasks_blocked = actor_tasks
+        .iter()
+        .filter(|t| t.status == TaskStatus::Blocked || t.status == TaskStatus::Escalated)
+        .count();
+    drop(tasks);
+
+    let (hook_status, last_heartbeat) = {
+        let hooks = state.hooks.lock().unwrap();
+        hooks
+            .iter()
+            .find(|h| h.rig_id == actor.rig_id && h.attached_actor_id == actor.actor_id)
+            .map(|h| (Some(format!("{:?}", h.status).to_lowercase()), Some(h.last_heartbeat.clone())))
+            .unwrap_or((None, None))
+    };
+
+    let has_running_worker = {
+        let workers = state.workers.lock().unwrap();
+        workers.iter().any(|w| {
+            w.rig_id == actor.rig_id
+                && w.actor_id.as_deref() == Some(actor.actor_id.as_str())
+                && w.status == WorkerStatusEnum::Running
+        })
+    };
+
+    Ok(ActorHealth {
+        actor_id: actor.actor_id,
+        rig_id: actor.rig_id,
+        tasks_total,
+        tasks_in_progress,
+        tasks_blocked,
+        hook_status,
+        last_heartbeat,
+        has_running_worker,
+    })
 }

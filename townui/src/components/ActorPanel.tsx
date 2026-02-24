@@ -409,7 +409,7 @@ function ActorCard({
             }
           }}
           disabled={deleting}
-          className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-red-500/10 text-town-text-faint hover:text-red-400 transition-all"
+          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded hover:bg-red-500/10 text-town-text-faint hover:text-red-400 transition-all"
         >
           <svg
             width="14"

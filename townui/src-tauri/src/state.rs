@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use tokio::sync::oneshot;
 
 /// A thread-safe writer handle for sending input to a running worker's stdin/PTY.
 pub type WorkerWriter = Box<dyn Write + Send>;
@@ -14,6 +15,7 @@ use crate::models::actor::Actor;
 use crate::models::audit::AuditEvent;
 use crate::models::convoy::Convoy;
 use crate::models::crew::Crew;
+use crate::models::dog::Dog;
 use crate::models::handoff::Handoff;
 use crate::models::hook::Hook;
 use crate::models::rig::Rig;
@@ -21,6 +23,73 @@ use crate::models::settings::AppSettings;
 use crate::models::task::Task;
 use crate::models::worker::{LogEntry, Run, Worker};
 use crate::models::workflow::{WorkflowInstance, WorkflowTemplate};
+
+#[derive(Debug, Clone)]
+pub struct SupervisorRuntimeState {
+    pub running: bool,
+    pub started_at: Option<String>,
+    pub last_reconcile_at: Option<String>,
+    pub last_compact_at: Option<String>,
+    pub loop_interval_seconds: u64,
+    pub auto_refinery_sync: bool,
+}
+
+impl Default for SupervisorRuntimeState {
+    fn default() -> Self {
+        Self {
+            running: false,
+            started_at: None,
+            last_reconcile_at: None,
+            last_compact_at: None,
+            loop_interval_seconds: 30,
+            auto_refinery_sync: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AiInboxRuntimeState {
+    pub running: bool,
+    pub bind_addr: Option<String>,
+    pub started_at: Option<String>,
+    pub requests_total: u64,
+    pub accepted_total: u64,
+    pub rejected_total: u64,
+    pub last_error: Option<String>,
+}
+
+impl Default for AiInboxRuntimeState {
+    fn default() -> Self {
+        Self {
+            running: false,
+            bind_addr: None,
+            started_at: None,
+            requests_total: 0,
+            accepted_total: 0,
+            rejected_total: 0,
+            last_error: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OrchestratorRolesState {
+    pub mayor_enabled: bool,
+    pub deacon_enabled: bool,
+    pub witness_enabled: bool,
+    pub updated_at: Option<String>,
+}
+
+impl Default for OrchestratorRolesState {
+    fn default() -> Self {
+        Self {
+            mayor_enabled: true,
+            deacon_enabled: true,
+            witness_enabled: true,
+            updated_at: Some(chrono::Utc::now().to_rfc3339()),
+        }
+    }
+}
 
 pub struct AppState {
     pub rigs: Mutex<Vec<Rig>>,
@@ -32,6 +101,7 @@ pub struct AppState {
     pub actors: Mutex<Vec<Actor>>,
     pub workers: Mutex<Vec<Worker>>,
     pub runs: Mutex<Vec<Run>>,
+    pub dogs: Mutex<Vec<Dog>>,
     pub worker_logs: Mutex<HashMap<String, Vec<LogEntry>>>,
     pub worker_writers: Mutex<HashMap<String, WorkerWriter>>,
     pub worker_pty_masters: Mutex<HashMap<String, PtyMasterHandle>>,
@@ -39,10 +109,27 @@ pub struct AppState {
     pub settings: Mutex<AppSettings>,
     pub workflow_templates: Mutex<Vec<WorkflowTemplate>>,
     pub workflow_instances: Mutex<Vec<WorkflowInstance>>,
+    pub supervisor: Mutex<SupervisorRuntimeState>,
+    pub ai_inbox: Mutex<AiInboxRuntimeState>,
+    pub roles: Mutex<OrchestratorRolesState>,
+    pub ai_inbox_shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
     pub town_dir: PathBuf,
 }
 
 impl AppState {
+    fn strip_utf8_bom(content: &str) -> &str {
+        content.strip_prefix('\u{feff}').unwrap_or(content)
+    }
+
+    fn load_json_vec_from_path<T: serde::de::DeserializeOwned>(path: &Path) -> Vec<T> {
+        if path.exists() {
+            let data = fs::read_to_string(path).unwrap_or_else(|_| "[]".to_string());
+            serde_json::from_str(Self::strip_utf8_bom(&data)).unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    }
+
     pub fn new() -> Self {
         let town_dir = dirs::home_dir()
             .expect("Could not find home directory")
@@ -77,6 +164,7 @@ impl AppState {
             actors: Mutex::new(actors),
             workers: Mutex::new(workers),
             runs: Mutex::new(runs),
+            dogs: Mutex::new(Vec::new()),
             worker_logs: Mutex::new(HashMap::new()),
             worker_writers: Mutex::new(HashMap::new()),
             worker_pty_masters: Mutex::new(HashMap::new()),
@@ -84,6 +172,10 @@ impl AppState {
             settings: Mutex::new(settings),
             workflow_templates: Mutex::new(workflow_templates),
             workflow_instances: Mutex::new(workflow_instances),
+            supervisor: Mutex::new(SupervisorRuntimeState::default()),
+            ai_inbox: Mutex::new(AiInboxRuntimeState::default()),
+            roles: Mutex::new(OrchestratorRolesState::default()),
+            ai_inbox_shutdown_tx: Mutex::new(None),
             town_dir,
         }
     }
@@ -92,7 +184,7 @@ impl AppState {
         let path = town_dir.join(filename);
         if path.exists() {
             let data = fs::read_to_string(&path).unwrap_or_else(|_| "[]".to_string());
-            serde_json::from_str(&data).unwrap_or_default()
+            serde_json::from_str(Self::strip_utf8_bom(&data)).unwrap_or_default()
         } else {
             Vec::new()
         }
@@ -102,7 +194,7 @@ impl AppState {
         let path = town_dir.join(filename);
         if path.exists() {
             let data = fs::read_to_string(&path).unwrap_or_else(|_| "{}".to_string());
-            serde_json::from_str(&data).unwrap_or_default()
+            serde_json::from_str(Self::strip_utf8_bom(&data)).unwrap_or_default()
         } else {
             T::default()
         }
@@ -124,6 +216,18 @@ impl AppState {
 
     pub fn save_tasks(&self, tasks: &[Task]) {
         self.save_json(tasks, "tasks.json");
+    }
+
+    pub fn tasks_file_path(&self) -> PathBuf {
+        self.town_dir.join("tasks.json")
+    }
+
+    pub fn reload_tasks_from_disk(&self) -> usize {
+        let loaded: Vec<Task> = Self::load_json_vec_from_path(&self.tasks_file_path());
+        let count = loaded.len();
+        let mut tasks = self.tasks.lock().unwrap();
+        *tasks = loaded;
+        count
     }
 
     pub fn save_hooks(&self, hooks: &[Hook]) {

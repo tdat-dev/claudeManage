@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub enum HandoffStatus {
     Pending,
     Accepted,
+    Rejected,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,6 +21,10 @@ pub struct Handoff {
     pub created_at: String,
     pub status: HandoffStatus,
     pub accepted_at: Option<String>,
+    #[serde(default)]
+    pub rejected_at: Option<String>,
+    #[serde(default)]
+    pub rejected_reason: Option<String>,
 }
 
 impl Handoff {
@@ -44,6 +49,8 @@ impl Handoff {
             created_at: chrono::Utc::now().to_rfc3339(),
             status: HandoffStatus::Pending,
             accepted_at: None,
+            rejected_at: None,
+            rejected_reason: None,
         }
     }
 }

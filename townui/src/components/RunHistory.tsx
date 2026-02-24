@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { RunInfo, LogEntry, listRuns, getRunLogs } from "../lib/tauri";
 import LogViewer from "./LogViewer";
+import { t } from "../lib/i18n";
 
 interface RunHistoryProps {
   rigId: string | null;
@@ -22,7 +23,7 @@ export default function RunHistory({ rigId }: RunHistoryProps) {
       .then((data) => {
         setRuns(data.sort((a, b) => b.started_at.localeCompare(a.started_at)));
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, [rigId]);
 
@@ -55,7 +56,7 @@ export default function RunHistory({ rigId }: RunHistoryProps) {
             </svg>
           </div>
           <p className="text-sm text-town-text-muted">
-            Select a rig to view run history
+            {t("vi", "select_rig_runs")}
           </p>
         </div>
       </div>
@@ -67,7 +68,7 @@ export default function RunHistory({ rigId }: RunHistoryProps) {
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-town-accent/30 border-t-town-accent rounded-full animate-spin" />
-          <span className="text-sm text-town-text-muted">Loading runs...</span>
+          <span className="text-sm text-town-text-muted">{t("vi", "loading_runs")}</span>
         </div>
       </div>
     );
@@ -119,7 +120,7 @@ export default function RunHistory({ rigId }: RunHistoryProps) {
           </svg>
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Run History</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("vi", "run_history")}</h1>
           <p className="text-sm text-town-text-muted mt-0.5">
             {runs.length} run{runs.length !== 1 ? "s" : ""}
           </p>
@@ -144,12 +145,12 @@ export default function RunHistory({ rigId }: RunHistoryProps) {
             >
               <polyline points="15 18 9 12 15 6" />
             </svg>
-            Back to runs
+            {t("vi", "back_to_runs")}
           </button>
 
           <div className="glass-card p-5 mb-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-lg">Run Details</h2>
+              <h2 className="font-bold text-lg">{t("vi", "run_details")}</h2>
               {statusConfig[selectedRun.status] && (
                 <span
                   className={`badge border ${statusConfig[selectedRun.status].bg}`}
@@ -166,7 +167,7 @@ export default function RunHistory({ rigId }: RunHistoryProps) {
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-town-bg/50 rounded-lg p-3.5">
                 <div className="text-[11px] text-town-text-faint font-medium uppercase tracking-wider mb-1">
-                  Agent
+                  {t("vi", "agent")}
                 </div>
                 <div className="text-sm font-semibold">
                   {selectedRun.agent_type}
@@ -174,7 +175,7 @@ export default function RunHistory({ rigId }: RunHistoryProps) {
               </div>
               <div className="bg-town-bg/50 rounded-lg p-3.5">
                 <div className="text-[11px] text-town-text-faint font-medium uppercase tracking-wider mb-1">
-                  Template
+                  {t("vi", "template")}
                 </div>
                 <div className="text-sm font-semibold">
                   {selectedRun.template_name}
@@ -182,7 +183,7 @@ export default function RunHistory({ rigId }: RunHistoryProps) {
               </div>
               <div className="bg-town-bg/50 rounded-lg p-3.5">
                 <div className="text-[11px] text-town-text-faint font-medium uppercase tracking-wider mb-1">
-                  Started
+                  {t("vi", "started_label")}
                 </div>
                 <div className="text-sm">
                   {new Date(selectedRun.started_at).toLocaleString()}
@@ -191,13 +192,13 @@ export default function RunHistory({ rigId }: RunHistoryProps) {
               {selectedRun.finished_at && (
                 <div className="bg-town-bg/50 rounded-lg p-3.5">
                   <div className="text-[11px] text-town-text-faint font-medium uppercase tracking-wider mb-1">
-                    Duration
+                    {t("vi", "duration")}
                   </div>
                   <div className="text-sm">
                     {Math.round(
                       (new Date(selectedRun.finished_at).getTime() -
                         new Date(selectedRun.started_at).getTime()) /
-                        1000,
+                      1000,
                     )}
                     s
                   </div>
@@ -206,7 +207,7 @@ export default function RunHistory({ rigId }: RunHistoryProps) {
               {selectedRun.exit_code !== null && (
                 <div className="bg-town-bg/50 rounded-lg p-3.5">
                   <div className="text-[11px] text-town-text-faint font-medium uppercase tracking-wider mb-1">
-                    Exit Code
+                    {t("vi", "exit_code")}
                   </div>
                   <div
                     className={`text-sm font-mono font-bold ${selectedRun.exit_code === 0 ? "text-town-success" : "text-town-danger"}`}
@@ -218,7 +219,7 @@ export default function RunHistory({ rigId }: RunHistoryProps) {
               {selectedRun.diff_stats && (
                 <div className="bg-town-bg/50 rounded-lg p-3.5">
                   <div className="text-[11px] text-town-text-faint font-medium uppercase tracking-wider mb-1">
-                    Git Diff
+                    {t("vi", "git_diff")}
                   </div>
                   <div className="text-sm font-mono">
                     {selectedRun.diff_stats}
@@ -229,7 +230,7 @@ export default function RunHistory({ rigId }: RunHistoryProps) {
 
             {/* Rendered prompt */}
             <div className="mt-4">
-              <h3 className="section-title mb-2">Rendered Prompt</h3>
+              <h3 className="section-title mb-2">{t("vi", "rendered_prompt")}</h3>
               <pre className="bg-town-bg/80 border border-town-border/40 rounded-lg p-4 text-xs whitespace-pre-wrap max-h-40 overflow-y-auto text-town-text-muted leading-relaxed">
                 {selectedRun.rendered_prompt}
               </pre>
@@ -259,9 +260,9 @@ export default function RunHistory({ rigId }: RunHistoryProps) {
                   <polyline points="12 6 12 12 16 14" />
                 </svg>
               </div>
-              <p className="text-sm text-town-text-muted">No runs yet</p>
+              <p className="text-sm text-town-text-muted">{t("vi", "no_runs_yet")}</p>
               <p className="text-xs text-town-text-faint mt-1">
-                Execute a task to see run history
+                {t("vi", "execute_to_see")}
               </p>
             </div>
           ) : (
@@ -311,7 +312,7 @@ export default function RunHistory({ rigId }: RunHistoryProps) {
                           {Math.round(
                             (new Date(run.finished_at).getTime() -
                               new Date(run.started_at).getTime()) /
-                              1000,
+                            1000,
                           )}
                           s
                         </span>

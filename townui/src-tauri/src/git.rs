@@ -263,3 +263,163 @@ pub fn delete_remote_branch(repo_path: &str, branch_name: &str) -> Result<(), St
         ))
     }
 }
+
+pub fn has_uncommitted_changes(path: &str) -> Result<bool, String> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(path)
+        .output()
+        .map_err(|e| format!("Failed to run git status --porcelain: {}", e))?;
+
+    if output.status.success() {
+        Ok(!String::from_utf8_lossy(&output.stdout).trim().is_empty())
+    } else {
+        Err(format!(
+            "git status --porcelain failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+pub fn fetch_all(repo_path: &str) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(["fetch", "--all", "--prune"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git fetch --all --prune: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "git fetch --all --prune failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+pub fn checkout_branch(repo_path: &str, branch_name: &str) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(["checkout", branch_name])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git checkout: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "git checkout {} failed: {}",
+            branch_name,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+pub fn pull_ff_only(repo_path: &str, remote: &str, branch_name: &str) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(["pull", "--ff-only", remote, branch_name])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git pull --ff-only: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "git pull --ff-only {} {} failed: {}",
+            remote,
+            branch_name,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+pub fn merge_branch_no_edit(repo_path: &str, branch_name: &str) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(["merge", "--no-ff", "--no-edit", branch_name])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git merge: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "git merge {} failed: {}",
+            branch_name,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+pub fn abort_merge(repo_path: &str) {
+    let _ = Command::new("git")
+        .args(["merge", "--abort"])
+        .current_dir(repo_path)
+        .output();
+}
+
+pub fn count_commits_ahead(repo_path: &str, base_branch: &str, branch_name: &str) -> Result<u32, String> {
+    let range = format!("{}..{}", base_branch, branch_name);
+    let output = Command::new("git")
+        .args(["rev-list", "--count", &range])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git rev-list --count: {}", e))?;
+
+    if output.status.success() {
+        let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        text.parse::<u32>()
+            .map_err(|e| format!("Failed to parse rev-list count '{}': {}", text, e))
+    } else {
+        Err(format!(
+            "git rev-list --count {} failed: {}",
+            range,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+pub fn commit_all(repo_path: &str, message: &str) -> Result<String, String> {
+    let add_output = Command::new("git")
+        .args(["add", "-A"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git add -A: {}", e))?;
+
+    if !add_output.status.success() {
+        return Err(format!(
+            "git add -A failed: {}",
+            String::from_utf8_lossy(&add_output.stderr).trim()
+        ));
+    }
+
+    let commit_output = Command::new("git")
+        .args(["commit", "-m", message])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git commit: {}", e))?;
+
+    if !commit_output.status.success() {
+        return Err(format!(
+            "git commit failed: {}",
+            String::from_utf8_lossy(&commit_output.stderr).trim()
+        ));
+    }
+
+    let rev_output = Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git rev-parse --short HEAD: {}", e))?;
+
+    if rev_output.status.success() {
+        Ok(String::from_utf8_lossy(&rev_output.stdout).trim().to_string())
+    } else {
+        Err(format!(
+            "git rev-parse --short HEAD failed: {}",
+            String::from_utf8_lossy(&rev_output.stderr).trim()
+        ))
+    }
+}

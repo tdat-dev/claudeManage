@@ -21,12 +21,19 @@ pub enum AuditEventType {
     HookResumed,
     HandoffCreated,
     HandoffAccepted,
+    HandoffRejected,
     ConvoyCreated,
     ConvoyUpdated,
     ConvoyCompleted,
     WorkflowInstantiated,
     WorkflowCompleted,
     WorkflowFailed,
+    SupervisorStarted,
+    SupervisorStopped,
+    QueueReconciled,
+    StateCompacted,
+    RefinerySynced,
+    RefinerySyncFailed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

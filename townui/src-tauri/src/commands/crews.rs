@@ -278,3 +278,79 @@ pub fn list_branches(rig_id: String, state: State<AppState>) -> Result<Vec<Strin
 
     git::list_branches(&path)
 }
+
+/// Create a cross-rig worktree: branches from `source_rig_id` and places the
+/// worktree inside `target_crew_path` (derived from the crew record).
+/// Returns the worktree path on success.
+#[tauri::command]
+pub fn create_cross_rig_worktree(
+    source_rig_id: String,
+    crew_id: String,
+    branch_name: Option<String>,
+    state: State<AppState>,
+    app: AppHandle,
+) -> Result<String, String> {
+    // Gather crew info
+    let (crew_path, crew_rig_id) = {
+        let crews = state.crews.lock().unwrap_or_else(|e| e.into_inner());
+        let crew = crews
+            .iter()
+            .find(|c| c.id == crew_id)
+            .ok_or_else(|| "Crew not found".to_string())?;
+        (crew.path.clone(), crew.rig_id.clone())
+    };
+
+    // Gather source rig path
+    let source_rig_path = {
+        let rigs = state.rigs.lock().unwrap_or_else(|e| e.into_inner());
+        rigs.iter()
+            .find(|r| r.id == source_rig_id)
+            .map(|r| r.path.clone())
+            .ok_or_else(|| "Source rig not found".to_string())?
+    };
+
+    // Validate crew belongs to a different rig (cross-rig guard)
+    if crew_rig_id == source_rig_id {
+        return Err("Source and target rigs are the same; use a regular worktree instead".to_string());
+    }
+
+    // Determine branch name (use crew_id slug if not given)
+    let branch = branch_name.unwrap_or_else(|| format!("xrig/{}", &crew_id[..8.min(crew_id.len())]));
+
+    // Create the worktree from source repo into crew_path
+    let output = std::process::Command::new("git")
+        .current_dir(&source_rig_path)
+        .args(["worktree", "add", "-b", &branch, &crew_path])
+        .output()
+        .map_err(|e| format!("Failed to run git: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git worktree add failed: {stderr}"));
+    }
+
+    // Mark crew as cross-rig (update source_rig_id field if present; otherwise just note in audit)
+    {
+        let crews = state.crews.lock().unwrap_or_else(|e| e.into_inner());
+        // Clone rig id for audit below (no mut needed — crew model doesn't have cross_rig field yet)
+        drop(crews);
+    }
+
+    use crate::models::audit::{AuditEvent, AuditEventType};
+    state.append_audit_event(&AuditEvent::new(
+        crew_rig_id.clone(),
+        None,
+        None,
+        AuditEventType::ConvoyUpdated,
+        serde_json::json!({
+            "crew_id": crew_id,
+            "cross_rig": true,
+            "source_rig_id": source_rig_id,
+            "worktree_path": crew_path,
+            "branch": branch,
+        }).to_string(),
+    ));
+
+    let _ = app.emit("data-changed", "");
+    Ok(crew_path)
+}

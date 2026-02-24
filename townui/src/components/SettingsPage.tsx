@@ -1,11 +1,15 @@
 import { useState, useEffect } from "react";
 import {
+  AiInboxStatus,
   AppSettings,
+  getAiInboxStatus,
   getSeedInfo,
   seedWorkflowTemplates,
   SeedInfo,
   listTemplates,
   TemplateInfo,
+  startAiInbox,
+  stopAiInbox,
 } from "../lib/tauri";
 import { t } from "../lib/i18n";
 import { shortenPathForCli } from "../lib/path";
@@ -26,6 +30,7 @@ export default function SettingsPage({
   onValidatePath,
 }: SettingsPageProps) {
   const [draft, setDraft] = useState<AppSettings | null>(null);
+  const [selectedCliKey, setSelectedCliKey] = useState<string>("");
   const [validationResult, setValidationResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [seedInfo, setSeedInfo] = useState<SeedInfo | null>(null);
@@ -33,6 +38,10 @@ export default function SettingsPage({
   const [seedResult, setSeedResult] = useState<string[] | null>(null);
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [editingCliKey, setEditingCliKey] = useState<string | null>(null);
+  const [aiInbox, setAiInbox] = useState<AiInboxStatus | null>(null);
+  const [aiBindAddr, setAiBindAddr] = useState("127.0.0.1:4317");
+  const [aiToken, setAiToken] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
 
   useEffect(() => {
     getSeedInfo()
@@ -41,15 +50,32 @@ export default function SettingsPage({
     listTemplates()
       .then(setTemplates)
       .catch(() => {});
+    getAiInboxStatus()
+      .then((status) => {
+        setAiInbox(status);
+        if (status.bind_addr) setAiBindAddr(status.bind_addr);
+      })
+      .catch(() => {});
   }, []);
 
   const current = draft || settings;
+  const cliKeys = Object.keys(current?.cli_paths ?? {});
+  const cliKeySignature = cliKeys.join("|");
+  const selectedCliValue = selectedCliKey
+    ? (current?.cli_paths[selectedCliKey] ?? "")
+    : "";
   const language = (current?.language ?? "en") as "en" | "vi";
-  const bridge = current?.ai_inbox_bridge ?? {
-    bind_addr: "127.0.0.1:7331",
-    token: "",
-    auto_start: false,
-  };
+
+  useEffect(() => {
+    if (!current) return;
+    if (cliKeys.length === 0) {
+      if (selectedCliKey !== "") setSelectedCliKey("");
+      return;
+    }
+    if (!selectedCliKey || !(selectedCliKey in current.cli_paths)) {
+      setSelectedCliKey(cliKeys[0]);
+    }
+  }, [current, selectedCliKey, cliKeySignature]);
 
   if (loading || !current) {
     return (
@@ -89,18 +115,6 @@ export default function SettingsPage({
     });
   };
 
-  const updateBridge = (
-    patch: Partial<NonNullable<AppSettings["ai_inbox_bridge"]>>,
-  ) => {
-    setDraft({
-      ...current,
-      ai_inbox_bridge: {
-        ...bridge,
-        ...patch,
-      },
-    });
-  };
-
   const handleSave = async () => {
     if (!current) return;
     setError(null);
@@ -121,7 +135,38 @@ export default function SettingsPage({
     }
   };
 
+  const handleStartAiInbox = async () => {
+    setAiBusy(true);
+    try {
+      const status = await startAiInbox(
+        aiBindAddr.trim() || "127.0.0.1:4317",
+        aiToken.trim() || undefined,
+      );
+      setAiInbox(status);
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const handleStopAiInbox = async () => {
+    setAiBusy(true);
+    try {
+      const status = await stopAiInbox();
+      setAiInbox(status);
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
   const isDirty = draft !== null;
+  const bridgeBind = aiInbox?.bind_addr || aiBindAddr;
+  const bridgeUrl = `http://${bridgeBind}`;
 
   return (
     <div className="h-full flex flex-col animate-fade-in">
@@ -206,36 +251,57 @@ export default function SettingsPage({
             </div>
 
             <div className="space-y-3">
-              {Object.entries(current.cli_paths).map(([key, value]) => (
-                <div key={key} className="group flex items-center gap-3">
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-town-text-muted w-28 shrink-0">
+                  Agent
+                </label>
+                <select
+                  value={selectedCliKey}
+                  onChange={(e) => setSelectedCliKey(e.target.value)}
+                  className="select-base flex-1"
+                >
+                  {cliKeys.map((key) => (
+                    <option key={key} value={key}>
+                      {key}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedCliKey && (
+                <div className="group flex items-center gap-3">
                   <label className="text-sm font-medium text-town-text-muted w-28 shrink-0 capitalize">
-                    {key}
+                    Path
                   </label>
                   <div className="flex-1 relative">
                     <input
                       type="text"
                       value={
-                        editingCliKey === key
-                          ? value
-                          : shortenPathForCli(value, 56)
+                        editingCliKey === selectedCliKey
+                          ? selectedCliValue
+                          : shortenPathForCli(selectedCliValue, 56)
                       }
-                      onChange={(e) => updateCliPath(key, e.target.value)}
-                      onFocus={() => setEditingCliKey(key)}
+                      onChange={(e) =>
+                        updateCliPath(selectedCliKey, e.target.value)
+                      }
+                      onFocus={() => setEditingCliKey(selectedCliKey)}
                       onBlur={() =>
-                        setEditingCliKey((prev) => (prev === key ? null : prev))
+                        setEditingCliKey((prev) =>
+                          prev === selectedCliKey ? null : prev,
+                        )
                       }
-                      title={value}
+                      title={selectedCliValue}
                       className="input-base font-mono text-xs pr-20"
                     />
                     <button
-                      onClick={() => handleValidate(value)}
+                      onClick={() => handleValidate(selectedCliValue)}
                       className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2 py-1 rounded-md text-[10px] font-medium bg-town-surface-hover text-town-text-muted hover:text-town-accent hover:bg-town-accent/10 transition-all duration-200"
                     >
                       Validate
                     </button>
                   </div>
                 </div>
-              ))}
+              )}
             </div>
 
             {validationResult && (
@@ -478,6 +544,137 @@ export default function SettingsPage({
             </p>
           </section>
 
+          {/* AI Inbox Bridge */}
+          <section className="glass-card p-5 space-y-4 border border-town-accent/20">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-md bg-town-accent/10 flex items-center justify-center">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="text-town-accent"
+                >
+                  <path d="M8 9h8" />
+                  <path d="M8 15h8" />
+                  <rect x="3" y="4" width="18" height="16" rx="2" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="section-title !mb-0">AI Inbox Bridge</h3>
+                <p className="text-[10px] text-town-text-faint mt-0.5">
+                  External AI/UI can POST tasks directly into Kanban
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-town-text-faint block mb-1">
+                  Bind address
+                </label>
+                <input
+                  type="text"
+                  value={aiBindAddr}
+                  onChange={(e) => setAiBindAddr(e.target.value)}
+                  className="input-base font-mono text-xs"
+                  placeholder="127.0.0.1:4317"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-town-text-faint block mb-1">
+                  Token (optional)
+                </label>
+                <input
+                  type="text"
+                  value={aiToken}
+                  onChange={(e) => setAiToken(e.target.value)}
+                  className="input-base font-mono text-xs"
+                  placeholder="x-townui-token"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {!aiInbox?.running ? (
+                <button
+                  onClick={handleStartAiInbox}
+                  disabled={aiBusy}
+                  className="btn-primary text-sm"
+                >
+                  {aiBusy ? "Starting..." : "Start Bridge"}
+                </button>
+              ) : (
+                <button
+                  onClick={handleStopAiInbox}
+                  disabled={aiBusy}
+                  className="btn-danger text-sm"
+                >
+                  {aiBusy ? "Stopping..." : "Stop Bridge"}
+                </button>
+              )}
+              <span
+                className={`text-xs font-medium ${
+                  aiInbox?.running
+                    ? "text-town-success"
+                    : "text-town-text-faint"
+                }`}
+              >
+                {aiInbox?.running ? `Running on ${bridgeUrl}` : "Stopped"}
+              </span>
+            </div>
+
+            {aiInbox && (
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="rounded-lg bg-town-surface-hover/50 p-2">
+                  <div className="text-town-text-faint">Requests</div>
+                  <div className="font-mono text-town-text">
+                    {aiInbox.requests_total}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-town-surface-hover/50 p-2">
+                  <div className="text-town-text-faint">Accepted</div>
+                  <div className="font-mono text-town-success">
+                    {aiInbox.accepted_total}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-town-surface-hover/50 p-2">
+                  <div className="text-town-text-faint">Rejected</div>
+                  <div className="font-mono text-town-danger">
+                    {aiInbox.rejected_total}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-lg bg-town-bg/40 border border-town-border/30 p-3">
+              <div className="text-[11px] text-town-text-faint mb-1">
+                Example payload
+              </div>
+              <pre className="text-[11px] font-mono text-town-text-muted whitespace-pre-wrap break-all">
+                {`curl -X POST ${bridgeUrl}/api/ai/tasks \\
+  -H "Content-Type: application/json"${
+    aiToken.trim()
+      ? ` \\
+  -H "X-TownUI-Token: ${aiToken.trim()}"`
+      : ""
+  } \\
+  -d '{"rig_id":"<RIG_ID>","title":"Fix login timeout","description":"Investigate auth refresh flow","priority":"high","tags":["backend","auth"]}'`}
+              </pre>
+              <p className="text-[10px] text-town-text-faint mt-2">
+                Also supports batch: {"{ rig_id, tasks: [...] }"} and brief
+                mode: {"{ rig_id, brief }"}.
+              </p>
+              {aiInbox?.last_error && (
+                <p className="text-[10px] text-town-danger mt-2">
+                  Last error: {aiInbox.last_error}
+                </p>
+              )}
+            </div>
+          </section>
+
           {/* Prompt Template Catalog */}
           <section className="glass-card p-5 space-y-4">
             <div className="flex items-center gap-2.5">
@@ -666,67 +863,6 @@ export default function SettingsPage({
                 )}
               </div>
             )}
-          </section>
-
-          {/* AI Inbox Bridge */}
-          <section className="glass-card p-5 space-y-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-md bg-town-accent/10 flex items-center justify-center">
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="text-town-accent"
-                >
-                  <path d="M17 7l-10 10" />
-                  <path d="M8 7h9v9" />
-                </svg>
-              </div>
-              <h3 className="section-title !mb-0">AI Inbox Bridge</h3>
-            </div>
-
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-wider text-town-text-faint">
-                  Bind Address
-                </label>
-                <input
-                  type="text"
-                  value={bridge.bind_addr}
-                  onChange={(e) => updateBridge({ bind_addr: e.target.value })}
-                  placeholder="127.0.0.1:7331"
-                  className="input-base font-mono text-xs"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-wider text-town-text-faint">
-                  Token
-                </label>
-                <input
-                  type="text"
-                  value={bridge.token}
-                  onChange={(e) => updateBridge({ token: e.target.value })}
-                  placeholder="Optional auth token"
-                  className="input-base font-mono text-xs"
-                />
-              </div>
-
-              <label className="flex items-center gap-2 text-sm text-town-text-muted">
-                <input
-                  type="checkbox"
-                  checked={bridge.auto_start}
-                  onChange={(e) =>
-                    updateBridge({ auto_start: e.target.checked })
-                  }
-                  className="rounded border-town-border/60 bg-town-surface"
-                />
-                Auto start bridge on app launch
-              </label>
-            </div>
           </section>
 
           {/* Language */}

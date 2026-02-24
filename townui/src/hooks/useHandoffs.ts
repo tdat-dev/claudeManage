@@ -4,6 +4,9 @@ import {
   listHandoffs,
   createHandoff,
   acceptHandoff,
+  rejectHandoff,
+  exportHandoff,
+  importHandoff,
 } from "../lib/tauri";
 
 export function useHandoffs(rigId: string | null) {
@@ -80,6 +83,52 @@ export function useHandoffs(rigId: string | null) {
     [],
   );
 
+  const reject = useCallback(
+    async (handoffId: string, reason?: string) => {
+      try {
+        setError(null);
+        const updated = await rejectHandoff(handoffId, reason);
+        setHandoffs((prev) =>
+          prev.map((h) => (h.handoff_id === handoffId ? updated : h)),
+        );
+        return updated;
+      } catch (e) {
+        setError(String(e));
+        throw e;
+      }
+    },
+    [],
+  );
+
+  const doExport = useCallback(
+    async (handoffId: string) => {
+      try {
+        setError(null);
+        return await exportHandoff(handoffId);
+      } catch (e) {
+        setError(String(e));
+        throw e;
+      }
+    },
+    [],
+  );
+
+  const doImport = useCallback(
+    async (jsonData: string) => {
+      if (!rigId) return;
+      try {
+        setError(null);
+        const created = await importHandoff(rigId, jsonData);
+        setHandoffs((prev) => [created, ...prev]);
+        return created;
+      } catch (e) {
+        setError(String(e));
+        throw e;
+      }
+    },
+    [rigId],
+  );
+
   return {
     handoffs,
     loading,
@@ -87,5 +136,8 @@ export function useHandoffs(rigId: string | null) {
     refresh,
     addHandoff,
     accept,
+    reject,
+    doExport,
+    doImport,
   };
 }

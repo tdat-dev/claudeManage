@@ -1,8 +1,10 @@
 import { ReactNode } from "react";
+import { AppLanguage, t } from "../lib/i18n";
 
 export type NavPage =
   | "rigs"
   | "tasks"
+  | "dispatch"
   | "workers"
   | "runs"
   | "actors"
@@ -17,11 +19,12 @@ interface LayoutProps {
   children: ReactNode;
   activePage: NavPage;
   onNavigate: (page: NavPage) => void;
+  language: AppLanguage;
 }
 
-const navItems: { label: string; page: NavPage; icon: JSX.Element }[] = [
+const navItemDefs: { i18nKey: string; page: NavPage; icon: JSX.Element }[] = [
   {
-    label: "Rigs",
+    i18nKey: "nav_rigs",
     page: "rigs",
     icon: (
       <svg
@@ -40,7 +43,7 @@ const navItems: { label: string; page: NavPage; icon: JSX.Element }[] = [
     ),
   },
   {
-    label: "Tasks",
+    i18nKey: "nav_tasks",
     page: "tasks",
     icon: (
       <svg
@@ -59,7 +62,28 @@ const navItems: { label: string; page: NavPage; icon: JSX.Element }[] = [
     ),
   },
   {
-    label: "Workers",
+    i18nKey: "nav_dispatch",
+    page: "dispatch",
+    icon: (
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M4 7h16" />
+        <path d="M4 12h10" />
+        <path d="M4 17h7" />
+        <circle cx="18" cy="12" r="3" />
+      </svg>
+    ),
+  },
+  {
+    i18nKey: "nav_workers",
     page: "workers",
     icon: (
       <svg
@@ -78,7 +102,7 @@ const navItems: { label: string; page: NavPage; icon: JSX.Element }[] = [
     ),
   },
   {
-    label: "Runs",
+    i18nKey: "nav_runs",
     page: "runs",
     icon: (
       <svg
@@ -97,7 +121,7 @@ const navItems: { label: string; page: NavPage; icon: JSX.Element }[] = [
     ),
   },
   {
-    label: "Actors",
+    i18nKey: "nav_actors",
     page: "actors",
     icon: (
       <svg
@@ -118,7 +142,7 @@ const navItems: { label: string; page: NavPage; icon: JSX.Element }[] = [
     ),
   },
   {
-    label: "Convoys",
+    i18nKey: "nav_convoys",
     page: "convoys",
     icon: (
       <svg
@@ -139,7 +163,7 @@ const navItems: { label: string; page: NavPage; icon: JSX.Element }[] = [
     ),
   },
   {
-    label: "Workflows",
+    i18nKey: "nav_workflows",
     page: "workflows",
     icon: (
       <svg
@@ -158,7 +182,7 @@ const navItems: { label: string; page: NavPage; icon: JSX.Element }[] = [
     ),
   },
   {
-    label: "Health",
+    i18nKey: "nav_health",
     page: "health",
     icon: (
       <svg
@@ -176,7 +200,7 @@ const navItems: { label: string; page: NavPage; icon: JSX.Element }[] = [
     ),
   },
   {
-    label: "Audit",
+    i18nKey: "nav_audit",
     page: "audit",
     icon: (
       <svg
@@ -198,7 +222,7 @@ const navItems: { label: string; page: NavPage; icon: JSX.Element }[] = [
     ),
   },
   {
-    label: "Settings",
+    i18nKey: "nav_settings",
     page: "settings",
     icon: (
       <svg
@@ -223,6 +247,7 @@ export default function Layout({
   children,
   activePage,
   onNavigate,
+  language,
 }: LayoutProps) {
   return (
     <div className="flex h-screen bg-town-bg text-town-text overflow-hidden">
@@ -248,17 +273,18 @@ export default function Layout({
 
         {/* Nav items */}
         <div className="flex flex-col items-center gap-1 flex-1">
-          {navItems.map((item) => {
+          {navItemDefs.map((item) => {
             const isActive = activePage === item.page;
+            const label = t(language, item.i18nKey);
             return (
               <button
                 key={item.page}
                 onClick={() => onNavigate(item.page)}
                 className={`group relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${isActive
-                    ? "bg-town-accent/12 text-town-accent shadow-glow-sm"
-                    : "text-town-text-muted hover:text-town-text hover:bg-town-surface-hover"
+                  ? "bg-town-accent/12 text-town-accent shadow-glow-sm"
+                  : "text-town-text-muted hover:text-town-text hover:bg-town-surface-hover"
                   }`}
-                title={item.label}
+                title={label}
               >
                 {isActive && (
                   <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-town-accent rounded-r-full" />
@@ -266,7 +292,7 @@ export default function Layout({
                 {item.icon}
                 {/* Tooltip */}
                 <div className="absolute left-full ml-3 px-2.5 py-1.5 bg-town-surface-active border border-town-border rounded-lg text-xs font-medium text-town-text whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-150 shadow-card z-50">
-                  {item.label}
+                  {label}
                 </div>
               </button>
             );

@@ -1,5 +1,10 @@
 use serde::{Deserialize, Serialize};
 
+fn default_true() -> bool { true }
+fn default_priming_delay_ms() -> u64 { 1500 }
+fn default_propulsion_interval() -> u64 { 60 }
+fn default_max_polecats() -> usize { 5 }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiInboxBridgeSettings {
     #[serde(default = "default_bridge_bind_addr")]
@@ -19,6 +24,24 @@ pub struct AppSettings {
     pub default_cli: String,
     #[serde(default = "default_language")]
     pub language: String,
+    // -- Startup priming --
+    #[serde(default = "default_true")]
+    pub startup_priming_enabled: bool,
+    #[serde(default)]
+    pub priming_template: Option<String>,
+    #[serde(default = "default_priming_delay_ms")]
+    pub priming_delay_ms: u64,
+    // -- Propulsion / Witness --
+    #[serde(default)]
+    pub propulsion_enabled: bool,
+    #[serde(default = "default_propulsion_interval")]
+    pub propulsion_interval_seconds: u64,
+    #[serde(default)]
+    pub witness_auto_spawn: bool,
+    #[serde(default = "default_max_polecats")]
+    pub max_polecats_per_rig: usize,
+    #[serde(default = "default_propulsion_interval")]
+    pub polecat_nudge_after_seconds: u64,
     #[serde(default)]
     pub ai_inbox_bridge: AiInboxBridgeSettings,
 }
@@ -28,7 +51,7 @@ fn default_cli() -> String {
 }
 
 fn default_language() -> String {
-    "en".to_string()
+    "vi".to_string()
 }
 
 fn default_bridge_bind_addr() -> String {
@@ -108,6 +131,14 @@ impl Default for AppSettings {
             default_template: "implement_feature".to_string(),
             default_cli: default_cli(),
             language: default_language(),
+            startup_priming_enabled: default_true(),
+            priming_template: None,
+            priming_delay_ms: default_priming_delay_ms(),
+            propulsion_enabled: false,
+            propulsion_interval_seconds: default_propulsion_interval(),
+            witness_auto_spawn: false,
+            max_polecats_per_rig: default_max_polecats(),
+            polecat_nudge_after_seconds: default_propulsion_interval(),
             ai_inbox_bridge: AiInboxBridgeSettings::default(),
         }
     }

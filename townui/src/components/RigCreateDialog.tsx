@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { shortenPathForCli } from "../lib/path";
+import { t } from "../lib/i18n";
 
 interface RigCreateDialogProps {
   onCreated: (path: string) => Promise<void>;
@@ -44,15 +45,15 @@ export default function RigCreateDialog({
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-town-surface border border-town-border rounded-lg p-6 w-[480px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold mb-4">Add Rig</h2>
-        <p className="text-town-text-muted text-sm mb-4">Select a folder containing a git repository to add as a rig.</p>
+        <h2 className="text-lg font-semibold mb-4">{t("vi", "add_rig")}</h2>
+        <p className="text-town-text-muted text-sm mb-4">{t("vi", "select_git_folder")}</p>
 
         <div className="flex gap-2 mb-4">
           <div
             className="flex-1 bg-town-bg border border-town-border rounded px-3 py-2 text-sm truncate"
             title={selectedPath || undefined}
           >
-            {selectedPath ? shortenPathForCli(selectedPath, 56) : "No folder selected"}
+            {selectedPath ? shortenPathForCli(selectedPath, 56) : t("vi", "no_folder_selected")}
           </div>
         </div>
 
@@ -60,7 +61,7 @@ export default function RigCreateDialog({
         <div className="px-6 pb-2">
           <div className="flex gap-2.5 mb-4">
             <div className="flex-1 bg-town-bg/80 border border-town-border rounded-lg px-3.5 py-2.5 text-sm truncate font-mono text-town-text-muted">
-              {selectedPath || "No folder selected"}
+              {selectedPath || t("vi", "no_folder_selected")}
             </div>
             <button
               onClick={handleBrowse}
@@ -79,7 +80,7 @@ export default function RigCreateDialog({
               >
                 <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
               </svg>
-              Browse
+              {t("vi", "browse")}
             </button>
           </div>
 
@@ -106,7 +107,7 @@ export default function RigCreateDialog({
         {/* Footer */}
         <div className="flex justify-end gap-2.5 px-6 py-4 border-t border-town-border/30 bg-town-bg/30">
           <button onClick={onClose} className="btn-ghost">
-            Cancel
+            {t("vi", "cancel")}
           </button>
           <button
             onClick={handleCreate}
@@ -116,10 +117,10 @@ export default function RigCreateDialog({
             {creating ? (
               <span className="flex items-center gap-2">
                 <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Adding...
+                {t("vi", "adding")}
               </span>
             ) : (
-              "Add Rig"
+              t("vi", "add_rig")
             )}
           </button>
         </div>

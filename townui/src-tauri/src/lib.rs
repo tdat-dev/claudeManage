@@ -4,10 +4,11 @@ pub mod models;
 pub mod state;
 pub mod templates;
 
+use notify::{recommended_watcher, EventKind, RecursiveMode, Watcher};
 use models::worker::WorkerStatusEnum;
 use state::AppState;
-use tauri::{Manager, RunEvent};
 use std::process::{Command, Stdio};
+use tauri::{Emitter, Manager, RunEvent};
 
 /// Kill a process tree by PID (used during shutdown cleanup).
 fn kill_pid(pid: u32) {
@@ -58,6 +59,56 @@ fn auto_start_ai_inbox_bridge(app_handle: &tauri::AppHandle) {
     }
 }
 
+fn start_tasks_file_watch(app_handle: tauri::AppHandle) {
+    let watch_dir = app_handle.state::<AppState>().town_dir.clone();
+    std::thread::Builder::new()
+        .name("tasks-file-watch".to_string())
+        .spawn(move || {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let mut watcher = match recommended_watcher(move |result| {
+                let _ = tx.send(result);
+            }) {
+                Ok(w) => w,
+                Err(err) => {
+                    eprintln!("[watch] failed to initialize tasks watcher: {}", err);
+                    return;
+                }
+            };
+
+            if let Err(err) = watcher.watch(&watch_dir, RecursiveMode::NonRecursive) {
+                eprintln!("[watch] failed to watch {}: {}", watch_dir.display(), err);
+                return;
+            }
+
+            while let Ok(event_result) = rx.recv() {
+                let Ok(event) = event_result else {
+                    continue;
+                };
+
+                let is_supported_kind = matches!(
+                    event.kind,
+                    EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
+                );
+                if !is_supported_kind {
+                    continue;
+                }
+
+                let touches_tasks = event
+                    .paths
+                    .iter()
+                    .any(|p| p.file_name().map(|n| n == "tasks.json").unwrap_or(false));
+                if !touches_tasks {
+                    continue;
+                }
+
+                let state = app_handle.state::<AppState>();
+                let _ = state.reload_tasks_from_disk();
+                let _ = app_handle.emit("data-changed", "");
+            }
+        })
+        .ok();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -65,6 +116,7 @@ pub fn run() {
         .manage(AppState::new())
         .setup(|app| {
             auto_start_ai_inbox_bridge(app.handle());
+            start_tasks_file_watch(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -80,33 +132,49 @@ pub fn run() {
             commands::crews::delete_crew,
             commands::crews::list_branches,
             commands::crews::get_crew_presets,
+            commands::crews::create_cross_rig_worktree,
             // Tasks
             commands::tasks::list_tasks,
             commands::tasks::create_task,
             commands::tasks::update_task,
             commands::tasks::delete_task,
+            commands::ai_inbox::get_ai_inbox_status,
+            commands::ai_inbox::start_ai_inbox,
+            commands::ai_inbox::stop_ai_inbox,
+            commands::ai_inbox::ingest_ai_brief,
             // Hooks
             commands::hooks::list_hooks,
             commands::hooks::create_hook,
+            commands::hooks::delete_hook,
             commands::hooks::assign_to_hook,
             commands::hooks::sling,
             commands::hooks::done,
             commands::hooks::resume_hook,
+            commands::hooks::get_rig_queue,
+            // Refinery (per-rig merge queue/integration)
+            commands::refinery::get_refinery_queue,
+            commands::refinery::sync_rig_refinery,
             // Handoffs
             commands::handoffs::list_handoffs,
             commands::handoffs::create_handoff,
             commands::handoffs::accept_handoff,
+            commands::handoffs::reject_handoff,
+            commands::handoffs::export_handoff,
+            commands::handoffs::import_handoff,
             // Convoys
             commands::convoys::list_convoys,
             commands::convoys::get_convoy,
             commands::convoys::create_convoy,
+            commands::convoys::create_convoy_v2,
             commands::convoys::add_item_to_convoy,
             commands::convoys::update_convoy_status,
+            commands::convoys::convoy_land,
             // Actors
             commands::actors::list_actors,
             commands::actors::create_actor,
             commands::actors::get_actor,
             commands::actors::delete_actor,
+            commands::actors::get_actor_health,
             // Workers & Runs
             commands::workers::spawn_worker,
             commands::workers::stop_worker,
@@ -121,6 +189,10 @@ pub fn run() {
             commands::workers::open_in_explorer,
             commands::workers::write_to_worker,
             commands::workers::resize_worker_pty,
+            commands::workers::spawn_polecat,
+            commands::workers::set_run_model_tag,
+            commands::workers::set_run_quality_signal,
+            commands::workers::list_run_stats,
             // Templates
             commands::templates::list_templates,
             commands::templates::render_template,
@@ -134,6 +206,25 @@ pub fn run() {
             // Health
             commands::tasks::get_health_metrics,
             commands::tasks::escalate_stuck_tasks,
+            // Supervisor (Gas Town runtime actions)
+            commands::supervisor::get_supervisor_status,
+            commands::supervisor::start_supervisor,
+            commands::supervisor::stop_supervisor,
+            commands::supervisor::reconcile_queue,
+            commands::supervisor::compact_state,
+            // Operations aliases (Gas Town style)
+            commands::operations::town_install,
+            commands::operations::town_up,
+            commands::operations::town_down,
+            commands::operations::town_shutdown,
+            commands::operations::town_status,
+            commands::operations::get_roles_status,
+            commands::operations::set_roles_status,
+            commands::operations::mayor_plan_objective,
+            commands::operations::deacon_patrol,
+            commands::operations::witness_report,
+            commands::operations::town_doctor,
+            commands::operations::town_fix,
             // Workflows
             commands::workflows::list_workflow_templates,
             commands::workflows::get_workflow_template,
@@ -142,12 +233,21 @@ pub fn run() {
             commands::workflows::list_workflow_instances,
             commands::workflows::get_workflow_instance,
             commands::workflows::instantiate_workflow,
+            commands::workflows::cook_formula,
+            commands::workflows::pour_protomolecule,
+            commands::workflows::create_wisp_preview,
             commands::workflows::start_workflow,
             commands::workflows::get_ready_steps,
             commands::workflows::advance_step,
             commands::workflows::cancel_workflow,
+            // Dog pool
+            commands::dogs::list_dogs,
+            commands::dogs::get_dog_pool_status,
+            commands::dogs::spawn_dog,
+            commands::dogs::prune_dogs,
             // Seed
             commands::seed::seed_workflow_templates,
+            commands::seed::seed_gastown_formulas,
             commands::seed::get_seed_info,
             commands::terminal::run_rig_command,
         ])

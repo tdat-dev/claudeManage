@@ -40,6 +40,9 @@ export default function TaskExecuteDialog({
         if (s.default_cli) {
           setAgentType(s.default_cli);
         }
+        if (s.default_template) {
+          setTemplateName(s.default_template);
+        }
       })
       .catch(() => {});
 

@@ -1,87 +1,36 @@
 import { useState, useEffect } from "react";
 import { useAuditLog } from "../hooks/useAuditLog";
+import { t } from "../lib/i18n";
 
 const eventTypeLabels: Record<
   string,
-  { label: string; color: string; icon: string }
+  { labelKey: string; color: string; icon: string }
 > = {
-  task_created: { label: "Task Created", color: "text-town-accent", icon: "+" },
-  task_updated: {
-    label: "Task Updated",
-    color: "text-town-text-muted",
-    icon: "✎",
-  },
-  task_status_changed: {
-    label: "Status Changed",
-    color: "text-town-warning",
-    icon: "→",
-  },
-  task_deleted: { label: "Task Deleted", color: "text-town-danger", icon: "✕" },
-  worker_spawned: {
-    label: "Worker Spawned",
-    color: "text-town-success",
-    icon: "▶",
-  },
-  worker_stopped: {
-    label: "Worker Stopped",
-    color: "text-town-warning",
-    icon: "■",
-  },
-  worker_failed: {
-    label: "Worker Failed",
-    color: "text-town-danger",
-    icon: "✕",
-  },
-  worker_completed: {
-    label: "Worker Completed",
-    color: "text-town-success",
-    icon: "✓",
-  },
-  run_started: { label: "Run Started", color: "text-town-accent", icon: "⚡" },
-  run_completed: {
-    label: "Run Completed",
-    color: "text-town-success",
-    icon: "✓",
-  },
-  run_failed: { label: "Run Failed", color: "text-town-danger", icon: "✕" },
-  hook_created: {
-    label: "Hook Created",
-    color: "text-town-accent",
-    icon: "⚓",
-  },
-  hook_assigned: { label: "Hook Assigned", color: "text-blue-400", icon: "⇢" },
-  hook_slung: { label: "Hook Slung", color: "text-town-success", icon: "⚡" },
-  hook_done: { label: "Hook Done", color: "text-town-success", icon: "✓" },
-  hook_resumed: { label: "Hook Resumed", color: "text-town-accent", icon: "↻" },
-  handoff_created: {
-    label: "Handoff Created",
-    color: "text-purple-400",
-    icon: "⇄",
-  },
-  handoff_accepted: {
-    label: "Handoff Accepted",
-    color: "text-purple-400",
-    icon: "✓",
-  },
-  convoy_created: {
-    label: "Convoy Created",
-    color: "text-cyan-400",
-    icon: "◈",
-  },
-  convoy_updated: {
-    label: "Convoy Updated",
-    color: "text-cyan-400",
-    icon: "✎",
-  },
-  convoy_completed: {
-    label: "Convoy Completed",
-    color: "text-town-success",
-    icon: "✓",
-  },
+  task_created: { labelKey: "audit_task_created", color: "text-town-accent", icon: "+" },
+  task_updated: { labelKey: "audit_task_updated", color: "text-town-text-muted", icon: "✎" },
+  task_status_changed: { labelKey: "audit_status_changed", color: "text-town-warning", icon: "→" },
+  task_deleted: { labelKey: "audit_task_deleted", color: "text-town-danger", icon: "✕" },
+  worker_spawned: { labelKey: "audit_worker_spawned", color: "text-town-success", icon: "▶" },
+  worker_stopped: { labelKey: "audit_worker_stopped", color: "text-town-warning", icon: "■" },
+  worker_failed: { labelKey: "audit_worker_failed", color: "text-town-danger", icon: "✕" },
+  worker_completed: { labelKey: "audit_worker_completed", color: "text-town-success", icon: "✓" },
+  run_started: { labelKey: "audit_run_started", color: "text-town-accent", icon: "⚡" },
+  run_completed: { labelKey: "audit_run_completed", color: "text-town-success", icon: "✓" },
+  run_failed: { labelKey: "audit_run_failed", color: "text-town-danger", icon: "✕" },
+  hook_created: { labelKey: "audit_hook_created", color: "text-town-accent", icon: "⚓" },
+  hook_assigned: { labelKey: "audit_hook_assigned", color: "text-blue-400", icon: "⇢" },
+  hook_slung: { labelKey: "audit_hook_slung", color: "text-town-success", icon: "⚡" },
+  hook_done: { labelKey: "audit_hook_done", color: "text-town-success", icon: "✓" },
+  hook_resumed: { labelKey: "audit_hook_resumed", color: "text-town-accent", icon: "↻" },
+  handoff_created: { labelKey: "audit_handoff_created", color: "text-purple-400", icon: "⇄" },
+  handoff_accepted: { labelKey: "audit_handoff_accepted", color: "text-purple-400", icon: "✓" },
+  convoy_created: { labelKey: "audit_convoy_created", color: "text-cyan-400", icon: "◈" },
+  convoy_updated: { labelKey: "audit_convoy_updated", color: "text-cyan-400", icon: "✎" },
+  convoy_completed: { labelKey: "audit_convoy_completed", color: "text-town-success", icon: "✓" },
 };
 
 const defaultLabel = {
-  label: "Event",
+  labelKey: "audit_event",
   color: "text-town-text-muted",
   icon: "•",
 };
@@ -135,9 +84,9 @@ export default function AuditTimeline({ rigId }: AuditTimelineProps) {
         <div className="w-12 h-12 rounded-2xl bg-town-surface flex items-center justify-center mb-3">
           <span className="text-xl text-town-text-faint">📋</span>
         </div>
-        <p className="text-sm text-town-text-muted">No audit events yet</p>
+        <p className="text-sm text-town-text-muted">{t("vi", "no_audit_events")}</p>
         <p className="text-xs text-town-text-faint mt-1">
-          Events will appear as you create and manage tasks
+          {t("vi", "events_appear")}
         </p>
       </div>
     );
@@ -161,7 +110,7 @@ export default function AuditTimeline({ rigId }: AuditTimelineProps) {
                 {config.icon}
               </span>
               <span className={`text-xs font-medium ${config.color}`}>
-                {config.label}
+                {t("vi", config.labelKey)}
               </span>
               <span className="text-[11px] text-town-text-faint ml-auto">
                 {formatTime(event.emitted_at)}
@@ -177,9 +126,9 @@ export default function AuditTimeline({ rigId }: AuditTimelineProps) {
                   </span>
                 ) : null}
                 {"old_status" in payload &&
-                "new_status" in payload &&
-                payload.old_status &&
-                payload.new_status ? (
+                  "new_status" in payload &&
+                  payload.old_status &&
+                  payload.new_status ? (
                   <span className="text-xs text-town-text-faint ml-2">
                     {String(payload.old_status)} → {String(payload.new_status)}
                   </span>
@@ -195,12 +144,12 @@ export default function AuditTimeline({ rigId }: AuditTimelineProps) {
                 </pre>
                 {event.work_item_id && (
                   <p className="text-[11px] text-town-text-faint mt-2">
-                    Work Item: {event.work_item_id}
+                    {t("vi", "work_item")}: {event.work_item_id}
                   </p>
                 )}
                 {event.actor_id && (
                   <p className="text-[11px] text-town-text-faint">
-                    Actor: {event.actor_id}
+                    {t("vi", "actor")}: {event.actor_id}
                   </p>
                 )}
               </div>
