@@ -619,16 +619,11 @@ export interface AppSettings {
   default_template: string;
   default_cli: string;
   language: "en" | "vi";
-  // Startup priming
-  startup_priming_enabled: boolean;
-  priming_template: string | null;
-  priming_delay_ms: number;
-  // Propulsion & Witness
-  propulsion_enabled: boolean;
-  propulsion_interval_seconds: number;
-  witness_auto_spawn: boolean;
-  max_polecats_per_rig: number;
-  polecat_nudge_after_seconds: number;
+  ai_inbox_bridge: {
+    bind_addr: string;
+    token: string;
+    auto_start: boolean;
+  };
 }
 
 export async function getSettings(): Promise<AppSettings> {

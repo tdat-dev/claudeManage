@@ -1,5 +1,15 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiInboxBridgeSettings {
+    #[serde(default = "default_bridge_bind_addr")]
+    pub bind_addr: String,
+    #[serde(default)]
+    pub token: String,
+    #[serde(default)]
+    pub auto_start: bool,
+}
+
 fn default_true() -> bool { true }
 fn default_priming_delay_ms() -> u64 { 1500 }
 fn default_propulsion_interval() -> u64 { 60 }
@@ -14,34 +24,6 @@ pub struct AppSettings {
     pub default_cli: String,
     #[serde(default = "default_language")]
     pub language: String,
-
-    // ── Startup Priming ──
-    /// Inject priming context into agent immediately after spawn.
-    #[serde(default = "default_true")]
-    pub startup_priming_enabled: bool,
-    /// Extra context injected at agent startup (system info, rig state, role).
-    #[serde(default)]
-    pub priming_template: Option<String>,
-    /// Milliseconds to wait after spawn before sending priming (give agent time to init).
-    #[serde(default = "default_priming_delay_ms")]
-    pub priming_delay_ms: u64,
-
-    // ── Propulsion / Witness ──
-    /// When true, Supervisor auto-assigns idle workers to queued tasks (propulsion).
-    #[serde(default)]
-    pub propulsion_enabled: bool,
-    /// Seconds between propulsion checks.
-    #[serde(default = "default_propulsion_interval")]
-    pub propulsion_interval_seconds: u64,
-    /// When true, Witness auto-spawns polecats for unassigned hooks.
-    #[serde(default)]
-    pub witness_auto_spawn: bool,
-    /// Maximum concurrent polecats per rig.
-    #[serde(default = "default_max_polecats")]
-    pub max_polecats_per_rig: usize,
-    /// Seconds a polecat can be idle before Witness nudges it.
-    #[serde(default = "default_propulsion_interval")]
-    pub polecat_nudge_after_seconds: u64,
 }
 
 fn default_cli() -> String {
@@ -50,6 +32,20 @@ fn default_cli() -> String {
 
 fn default_language() -> String {
     "vi".to_string()
+}
+
+fn default_bridge_bind_addr() -> String {
+    "127.0.0.1:7331".to_string()
+}
+
+impl Default for AiInboxBridgeSettings {
+    fn default() -> Self {
+        Self {
+            bind_addr: default_bridge_bind_addr(),
+            token: String::new(),
+            auto_start: false,
+        }
+    }
 }
 
 impl Default for AppSettings {
@@ -115,14 +111,6 @@ impl Default for AppSettings {
             default_template: "implement_feature".to_string(),
             default_cli: default_cli(),
             language: default_language(),
-            startup_priming_enabled: true,
-            priming_template: None,
-            priming_delay_ms: default_priming_delay_ms(),
-            propulsion_enabled: false,
-            propulsion_interval_seconds: default_propulsion_interval(),
-            witness_auto_spawn: false,
-            max_polecats_per_rig: default_max_polecats(),
-            polecat_nudge_after_seconds: default_propulsion_interval(),
         }
     }
 }

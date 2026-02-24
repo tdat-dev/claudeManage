@@ -7,6 +7,8 @@ pub mod templates;
 use notify::{recommended_watcher, EventKind, RecursiveMode, Watcher};
 use models::worker::WorkerStatusEnum;
 use state::AppState;
+use tauri::{Manager, RunEvent};
+use std::process::{Command, Stdio};
 use tauri::{Emitter, Manager, RunEvent};
 
 /// Kill a process tree by PID (used during shutdown cleanup).
@@ -25,54 +27,37 @@ fn kill_pid(pid: u32) {
     }
 }
 
-fn start_tasks_file_watch(app_handle: tauri::AppHandle) {
-    let watch_dir = app_handle.state::<AppState>().town_dir.clone();
-    std::thread::Builder::new()
-        .name("tasks-file-watch".to_string())
-        .spawn(move || {
-            let (tx, rx) = std::sync::mpsc::channel();
-            let mut watcher = match recommended_watcher(move |result| {
-                let _ = tx.send(result);
-            }) {
-                Ok(w) => w,
-                Err(err) => {
-                    eprintln!("[watch] failed to initialize tasks watcher: {}", err);
-                    return;
-                }
-            };
+fn auto_start_ai_inbox_bridge(app_handle: &tauri::AppHandle) {
+    let state = app_handle.state::<AppState>();
+    let bridge_settings = {
+        let settings = state.settings.lock().unwrap_or_else(|e| e.into_inner());
+        settings.ai_inbox_bridge.clone()
+    };
 
-            if let Err(err) = watcher.watch(&watch_dir, RecursiveMode::NonRecursive) {
-                eprintln!("[watch] failed to watch {}: {}", watch_dir.display(), err);
-                return;
+    if !bridge_settings.auto_start {
+        return;
+    }
+
+    let mut cmd = Command::new("ai-inbox-bridge");
+    cmd.arg("--bind-addr").arg(bridge_settings.bind_addr);
+    if !bridge_settings.token.trim().is_empty() {
+        cmd.arg("--token").arg(bridge_settings.token);
+    }
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    match cmd.spawn() {
+        Ok(child) => {
+            if let Ok(mut pid_slot) = state.ai_inbox_bridge_pid.lock() {
+                *pid_slot = Some(child.id());
             }
-
-            while let Ok(event_result) = rx.recv() {
-                let Ok(event) = event_result else {
-                    continue;
-                };
-
-                let is_supported_kind = matches!(
-                    event.kind,
-                    EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
-                );
-                if !is_supported_kind {
-                    continue;
-                }
-
-                let touches_tasks = event
-                    .paths
-                    .iter()
-                    .any(|p| p.file_name().map(|n| n == "tasks.json").unwrap_or(false));
-                if !touches_tasks {
-                    continue;
-                }
-
-                let state = app_handle.state::<AppState>();
-                let _ = state.reload_tasks_from_disk();
-                let _ = app_handle.emit("data-changed", "");
-            }
-        })
-        .ok();
+            eprintln!("[startup] AI Inbox Bridge started (pid {})", child.id());
+        }
+        Err(err) => {
+            eprintln!("[startup] Failed to start AI Inbox Bridge: {}", err);
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -81,7 +66,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
         .setup(|app| {
-            start_tasks_file_watch(app.handle().clone());
+            auto_start_ai_inbox_bridge(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -244,6 +229,20 @@ pub fn run() {
             };
             for (worker_id, entries) in drained_logs {
                 state.save_log(&worker_id, &entries);
+            }
+
+            let bridge_pid_to_kill = {
+                if let Ok(mut bridge_pid) = state.ai_inbox_bridge_pid.lock() {
+                    let pid = *bridge_pid;
+                    *bridge_pid = None;
+                    pid
+                } else {
+                    None
+                }
+            };
+            if let Some(pid) = bridge_pid_to_kill {
+                eprintln!("[shutdown] Killing AI Inbox Bridge (pid {})", pid);
+                kill_pid(pid);
             }
         }
     });
