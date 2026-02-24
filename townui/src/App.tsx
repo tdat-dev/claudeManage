@@ -23,7 +23,13 @@ import { useHooks } from "./hooks/useHooks";
 import { useHandoffs } from "./hooks/useHandoffs";
 import { useActors } from "./hooks/useActors";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
-import { TaskItem, executeTask } from "./lib/tauri";
+import {
+  TaskItem,
+  executeTask,
+  getSettings,
+  ingestAIBrief,
+  listCrews,
+} from "./lib/tauri";
 import { AppLanguage, t } from "./lib/i18n";
 
 export default function App() {
@@ -48,6 +54,7 @@ export default function App() {
     hooks,
     loading: hooksLoading,
     addHook,
+    remove: removeHook,
     assign,
     slingNow,
     done,
@@ -58,6 +65,9 @@ export default function App() {
     loading: handoffsLoading,
     addHandoff,
     accept,
+    reject,
+    doExport: exportHandoffJson,
+    doImport: importHandoffJson,
   } = useHandoffs(selectedRig?.id ?? null);
   const {
     actors,
@@ -71,6 +81,45 @@ export default function App() {
   const [showTaskCreate, setShowTaskCreate] = useState(false);
   const [executeTarget, setExecuteTarget] = useState<TaskItem | null>(null);
   const language: AppLanguage = settings?.language ?? "en";
+
+  const fallbackSplitBrief = (brief: string): string[] => {
+    return brief
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => line.replace(/^[-*]\s+/, ""))
+      .map((line) => line.replace(/^\d+\.\s+/, ""))
+      .filter((line) => line.length > 0);
+  };
+
+  const quickStartTask = async (task: TaskItem) => {
+    try {
+      const crews = await listCrews(task.rig_id);
+      if (crews.length === 0) {
+        setExecuteTarget(task);
+        return;
+      }
+
+      let agentType = "";
+      let templateName = "implement_feature";
+      try {
+        const appSettings = await getSettings();
+        if (appSettings.default_cli?.trim()) {
+          agentType = appSettings.default_cli;
+        }
+        if (appSettings.default_template?.trim()) {
+          templateName = appSettings.default_template;
+        }
+      } catch {
+        // Fall back to backend defaults.
+      }
+
+      await executeTask(task.id, crews[0].id, agentType, templateName);
+      await editTask(task.id, { status: "in_progress" });
+    } catch (e) {
+      alert(`Start failed: ${String(e)}`);
+    }
+  };
 
   // Plumb global hotkeys based on current page
   useGlobalShortcuts(
@@ -96,7 +145,7 @@ export default function App() {
               <div className="flex flex-col items-center gap-3">
                 <div className="w-8 h-8 border-2 border-town-accent/30 border-t-town-accent rounded-full animate-spin" />
                 <span className="text-sm text-town-text-muted">
-                  Loading rigs...
+                  {t(language, "rigs_loading")}
                 </span>
               </div>
             </div>
@@ -123,7 +172,7 @@ export default function App() {
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-town-danger mb-1">
-                    Error
+                    {t(language, "error")}
                   </h3>
                   <p className="text-sm text-town-text-muted">{error}</p>
                 </div>
@@ -160,11 +209,10 @@ export default function App() {
                 </svg>
               </div>
               <h2 className="text-2xl font-bold text-town-text mb-2">
-                Welcome to TownUI
+                {t(language, "welcome_title")}
               </h2>
               <p className="text-town-text-muted text-sm mb-6 max-w-xs mx-auto leading-relaxed">
-                Manage your AI coding agents across multiple repositories.
-                Select a rig or add a new one to get started.
+                {t(language, "welcome_desc")}
               </p>
               <button
                 onClick={() => setShowCreate(true)}
@@ -182,7 +230,7 @@ export default function App() {
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
-                Add Your First Rig
+                {t(language, "welcome_add_rig")}
               </button>
             </div>
           </div>
@@ -208,7 +256,7 @@ export default function App() {
                   </svg>
                 </div>
                 <p className="text-sm text-town-text-muted">
-                  Select a rig first to manage tasks
+                  {t(language, "select_rig_manage_tasks")}
                 </p>
               </div>
             </div>
@@ -216,86 +264,6 @@ export default function App() {
         }
         return (
           <div className="flex flex-col h-full">
-            {/* Terms & Hook/Handoff row – capped height with scroll */}
-            <div className="shrink-0 max-h-[40vh] overflow-y-auto space-y-3 px-4 pt-4 pb-2">
-              <div className="glass-card p-3">
-                <details className="group">
-                  <summary className="text-xs font-semibold cursor-pointer list-none flex items-center gap-2">
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="text-town-text-faint group-open:rotate-90 transition-transform"
-                    >
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                    {t(language, "terms_title")}
-                  </summary>
-                  <ul className="text-xs text-town-text-muted space-y-1 mt-2 ml-5">
-                    <li>• {t(language, "terms_hook")}</li>
-                    <li>• {t(language, "terms_sling")}</li>
-                    <li>• {t(language, "terms_handoff")}</li>
-                    <li>• {t(language, "terms_done")}</li>
-                  </ul>
-                </details>
-              </div>
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                <HookInbox
-                  language={language}
-                  hooks={hooks}
-                  tasks={tasks}
-                  actors={actors}
-                  loading={hooksLoading}
-                  onCreateHook={async (actorId) => {
-                    await addHook(actorId);
-                  }}
-                  onAssign={async (hookId, taskId) => {
-                    await assign(hookId, taskId);
-                  }}
-                  onSling={async (hookId, taskId) => {
-                    await slingNow(hookId, taskId);
-                  }}
-                  onDone={async (hookId, outcome) => {
-                    await done(hookId, outcome);
-                  }}
-                  onResume={async (hookId) => {
-                    await resume(hookId);
-                  }}
-                />
-                <HandoffCenter
-                  language={language}
-                  handoffs={handoffs}
-                  tasks={tasks}
-                  actors={actors}
-                  loading={handoffsLoading}
-                  onCreate={async (
-                    fromActorId,
-                    toActorId,
-                    workItemId,
-                    contextSummary,
-                    blockers,
-                    nextSteps,
-                  ) => {
-                    await addHandoff(
-                      fromActorId,
-                      toActorId,
-                      workItemId,
-                      contextSummary,
-                      blockers,
-                      nextSteps,
-                    );
-                  }}
-                  onAccept={async (handoffId, acceptedByActorId) => {
-                    await accept(handoffId, acceptedByActorId);
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Kanban board fills remaining space */}
             <div className="flex-1 min-h-0">
               <TaskBoard
                 language={language}
@@ -306,8 +274,141 @@ export default function App() {
                 onEdit={editTask}
                 onDelete={removeTask}
                 onExecute={(task) => setExecuteTarget(task)}
+                onQuickStart={quickStartTask}
                 onSling={async (taskId, hookId) => {
                   await slingNow(hookId, taskId);
+                }}
+                onAiIntake={async (brief) => {
+                  if (!selectedRig) return { created: 0, ignoredLines: 0 };
+                  try {
+                    const result = await ingestAIBrief(selectedRig.id, brief);
+                    await refreshTasks();
+                    return {
+                      created: result.created.length,
+                      ignoredLines: result.ignored_lines,
+                    };
+                  } catch {
+                    const items = fallbackSplitBrief(brief);
+                    let created = 0;
+                    for (const item of items) {
+                      await addTask(
+                        item,
+                        `Generated from AI brief: ${item}`,
+                        [],
+                        "medium",
+                      );
+                      created += 1;
+                    }
+                    await refreshTasks();
+                    return { created, ignoredLines: 0 };
+                  }
+                }}
+              />
+            </div>
+          </div>
+        );
+
+      case "dispatch":
+        if (!selectedRig) {
+          return (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center animate-fade-in">
+                <div className="w-14 h-14 rounded-2xl bg-town-surface flex items-center justify-center mx-auto mb-4">
+                  <span className="text-xl text-town-text-faint">📮</span>
+                </div>
+                <p className="text-sm text-town-text-muted">
+                  {t(language, "select_rig_manage_tasks")}
+                </p>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div className="h-full overflow-y-auto p-4 space-y-3">
+            <div className="glass-card p-3">
+              <details className="group">
+                <summary className="text-xs font-semibold cursor-pointer list-none flex items-center gap-2">
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className="text-town-text-faint group-open:rotate-90 transition-transform"
+                  >
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                  {t(language, "terms_title")}
+                </summary>
+                <ul className="text-xs text-town-text-muted space-y-1 mt-2 ml-5">
+                  <li>• {t(language, "terms_hook")}</li>
+                  <li>• {t(language, "terms_sling")}</li>
+                  <li>• {t(language, "terms_handoff")}</li>
+                  <li>• {t(language, "terms_done")}</li>
+                </ul>
+              </details>
+            </div>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+              <HookInbox
+                language={language}
+                hooks={hooks}
+                tasks={tasks}
+                actors={actors}
+                loading={hooksLoading}
+                onCreateHook={async (actorId) => {
+                  await addHook(actorId);
+                }}
+                onDeleteHook={async (hookId) => {
+                  await removeHook(hookId);
+                }}
+                onAssign={async (hookId, taskId) => {
+                  await assign(hookId, taskId);
+                }}
+                onSling={async (hookId, taskId) => {
+                  await slingNow(hookId, taskId);
+                }}
+                onDone={async (hookId, outcome) => {
+                  await done(hookId, outcome);
+                }}
+                onResume={async (hookId) => {
+                  await resume(hookId);
+                }}
+              />
+              <HandoffCenter
+                language={language}
+                handoffs={handoffs}
+                tasks={tasks}
+                actors={actors}
+                loading={handoffsLoading}
+                onCreate={async (
+                  fromActorId,
+                  toActorId,
+                  workItemId,
+                  contextSummary,
+                  blockers,
+                  nextSteps,
+                ) => {
+                  await addHandoff(
+                    fromActorId,
+                    toActorId,
+                    workItemId,
+                    contextSummary,
+                    blockers,
+                    nextSteps,
+                  );
+                }}
+                onAccept={async (handoffId, acceptedByActorId) => {
+                  await accept(handoffId, acceptedByActorId);
+                }}
+                onReject={async (handoffId, reason) => {
+                  await reject(handoffId, reason);
+                }}
+                onExport={async (handoffId) => {
+                  return await exportHandoffJson(handoffId);
+                }}
+                onImport={async (jsonData) => {
+                  await importHandoffJson(jsonData);
                 }}
               />
             </div>
@@ -323,7 +424,7 @@ export default function App() {
                   <span className="text-xl text-town-text-faint">👤</span>
                 </div>
                 <p className="text-sm text-town-text-muted">
-                  Select a rig first to manage actors
+                  {t(language, "actor_select_first")}
                 </p>
               </div>
             </div>
@@ -364,7 +465,7 @@ export default function App() {
                   <span className="text-xl text-town-text-faint">📋</span>
                 </div>
                 <p className="text-sm text-town-text-muted">
-                  Select a rig first to view audit trail
+                  {t(language, "audit_select_rig")}
                 </p>
               </div>
             </div>
@@ -374,9 +475,11 @@ export default function App() {
           <div className="p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold">Audit Trail</h2>
+                <h2 className="text-lg font-bold">
+                  {t(language, "audit_title")}
+                </h2>
                 <p className="text-xs text-town-text-muted mt-0.5">
-                  Timeline of all events in {selectedRig.name}
+                  {t(language, "audit_timeline")} — {selectedRig.name}
                 </p>
               </div>
             </div>
@@ -401,6 +504,7 @@ export default function App() {
     <Layout
       activePage={activePage}
       onNavigate={setActivePage}
+      language={language}
       sidebar={
         <RigList
           rigs={rigs}

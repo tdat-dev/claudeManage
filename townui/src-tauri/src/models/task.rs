@@ -157,6 +157,7 @@ impl Task {
                 TaskStatus::Cancelled,
             ],
             TaskStatus::InProgress => vec![
+                TaskStatus::Todo,
                 TaskStatus::Done,
                 TaskStatus::Blocked,
                 TaskStatus::Deferred,

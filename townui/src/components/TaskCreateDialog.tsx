@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { TaskPriority } from "../lib/tauri";
+import { t } from "../lib/i18n";
 
 interface TaskCreateDialogProps {
   onCreated: (
@@ -73,9 +74,9 @@ export default function TaskCreateDialog({
               </svg>
             </div>
             <div>
-              <h2 className="text-lg font-bold">New Task</h2>
+              <h2 className="text-lg font-bold">{t("vi", "new_task")}</h2>
               <p className="text-xs text-town-text-muted">
-                Define work for your AI agents
+                {t("vi", "define_work")}
               </p>
             </div>
           </div>
@@ -85,7 +86,7 @@ export default function TaskCreateDialog({
         <div className="px-6 pb-2 space-y-4">
           <div>
             <label className="block text-sm font-medium text-town-text-muted mb-1.5">
-              Title
+              {t("vi", "title_label")}
             </label>
             <input
               type="text"
@@ -98,7 +99,7 @@ export default function TaskCreateDialog({
           </div>
           <div>
             <label className="block text-sm font-medium text-town-text-muted mb-1.5">
-              Description
+              {t("vi", "description_label")}
             </label>
             <textarea
               value={description}
@@ -110,8 +111,8 @@ export default function TaskCreateDialog({
           </div>
           <div>
             <label className="block text-sm font-medium text-town-text-muted mb-1.5">
-              Acceptance Criteria
-              <span className="text-town-text-faint ml-1">(optional)</span>
+              {t("vi", "acceptance_criteria")}
+              <span className="text-town-text-faint ml-1">({t("vi", "optional")})</span>
             </label>
             <textarea
               value={acceptanceCriteria}
@@ -124,7 +125,7 @@ export default function TaskCreateDialog({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-town-text-muted mb-1.5">
-                Tags
+                {t("vi", "tags")}
               </label>
               <input
                 type="text"
@@ -134,12 +135,12 @@ export default function TaskCreateDialog({
                 className="input-base"
               />
               <p className="text-[11px] text-town-text-faint mt-1">
-                Comma separated
+                {t("vi", "comma_separated")}
               </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-town-text-muted mb-1.5">
-                Priority
+                {t("vi", "priority")}
               </label>
               <select
                 value={priority}
@@ -177,7 +178,7 @@ export default function TaskCreateDialog({
         {/* Footer */}
         <div className="flex justify-end gap-2.5 px-6 py-4 mt-2 border-t border-town-border/30 bg-town-bg/30">
           <button onClick={onClose} className="btn-ghost">
-            Cancel
+            {t("vi", "cancel")}
           </button>
           <button
             onClick={handleCreate}
@@ -187,10 +188,10 @@ export default function TaskCreateDialog({
             {creating ? (
               <span className="flex items-center gap-2">
                 <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Creating...
+                {t("vi", "creating_dots")}
               </span>
             ) : (
-              "Create Task"
+              t("vi", "create_task")
             )}
           </button>
         </div>

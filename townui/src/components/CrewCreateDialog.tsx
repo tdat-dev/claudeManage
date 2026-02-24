@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { CrewPreset, getCrewPresets } from "../lib/tauri";
+import { t } from "../lib/i18n";
 
 interface CrewCreateDialogProps {
   branches: string[];
@@ -107,9 +108,9 @@ export default function CrewCreateDialog({
               </svg>
             </div>
             <div>
-              <h2 className="text-lg font-bold">New Crew</h2>
+              <h2 className="text-lg font-bold">{t("vi", "new_crew")}</h2>
               <p className="text-xs text-town-text-muted">
-                Choose from presets or create a custom crew
+                {t("vi", "choose_presets_or_custom")}
               </p>
             </div>
           </div>
@@ -119,20 +120,20 @@ export default function CrewCreateDialog({
             <button
               onClick={() => setMode("presets")}
               className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${mode === "presets"
-                  ? "bg-town-accent text-white shadow-sm"
-                  : "text-town-text-muted hover:text-town-text"
+                ? "bg-town-accent text-white shadow-sm"
+                : "text-town-text-muted hover:text-town-text"
                 }`}
             >
-              <span className="mr-1.5">🏢</span> Company Presets
+              {t("vi", "company_presets")}
             </button>
             <button
               onClick={() => setMode("custom")}
               className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${mode === "custom"
-                  ? "bg-town-accent text-white shadow-sm"
-                  : "text-town-text-muted hover:text-town-text"
+                ? "bg-town-accent text-white shadow-sm"
+                : "text-town-text-muted hover:text-town-text"
                 }`}
             >
-              <span className="mr-1.5">✏️</span> Custom Crew
+              {t("vi", "custom_crew")}
             </button>
           </div>
         </div>
@@ -144,7 +145,7 @@ export default function CrewCreateDialog({
               {/* Base Branch */}
               <div>
                 <label className="block text-sm font-medium text-town-text-muted mb-1.5">
-                  Base Branch
+                  {t("vi", "base_branch")}
                 </label>
                 <select
                   value={baseBranch}
@@ -163,11 +164,11 @@ export default function CrewCreateDialog({
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-sm font-medium text-town-text-muted">
-                    Select Crews to Create
+                    {t("vi", "select_crews_create")}
                   </label>
                   {selectedPresets.size > 0 && (
                     <span className="text-xs bg-town-accent/20 text-town-accent px-2 py-0.5 rounded-full font-medium">
-                      {selectedPresets.size} selected
+                      {selectedPresets.size} {t("vi", "selected")}
                     </span>
                   )}
                 </div>
@@ -183,15 +184,15 @@ export default function CrewCreateDialog({
                         disabled={alreadyExists || creating}
                         onClick={() => togglePreset(preset.key)}
                         className={`relative text-left p-3 rounded-xl border-2 transition-all duration-200 ${alreadyExists
-                            ? "opacity-40 cursor-not-allowed border-town-border/20 bg-town-bg/30"
-                            : isSelected
-                              ? "border-town-accent bg-town-accent/10 shadow-glow-sm"
-                              : "border-town-border/30 bg-town-bg/40 hover:border-town-border-light/50 hover:bg-town-bg/60"
+                          ? "opacity-40 cursor-not-allowed border-town-border/20 bg-town-bg/30"
+                          : isSelected
+                            ? "border-town-accent bg-town-accent/10 shadow-glow-sm"
+                            : "border-town-border/30 bg-town-bg/40 hover:border-town-border-light/50 hover:bg-town-bg/60"
                           }`}
                       >
                         {alreadyExists && (
                           <span className="absolute top-2 right-2 text-[10px] bg-town-text-faint/20 text-town-text-faint px-1.5 py-0.5 rounded-full">
-                            exists
+                            {t("vi", "exists")}
                           </span>
                         )}
                         {isSelected && !alreadyExists && (
@@ -237,7 +238,7 @@ export default function CrewCreateDialog({
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-town-text-muted mb-1.5">
-                  Crew Name
+                  {t("vi", "crew_name")}
                 </label>
                 <input
                   type="text"
@@ -250,7 +251,7 @@ export default function CrewCreateDialog({
               </div>
               <div>
                 <label className="block text-sm font-medium text-town-text-muted mb-1.5">
-                  Base Branch
+                  {t("vi", "base_branch")}
                 </label>
                 <select
                   value={baseBranch}
@@ -293,7 +294,7 @@ export default function CrewCreateDialog({
                 </svg>
               </div>
               <span className="text-sm font-medium text-town-text-muted group-hover:text-town-text transition-colors">
-                Push branch to remote (origin)
+                {t("vi", "push_branch_remote")}
               </span>
             </label>
           </div>
@@ -328,7 +329,7 @@ export default function CrewCreateDialog({
         {/* Footer */}
         <div className="flex justify-end gap-2.5 px-6 py-4 mt-2 border-t border-town-border/30 bg-town-bg/30 shrink-0">
           <button onClick={onClose} className="btn-ghost" disabled={creating}>
-            Cancel
+            {t("vi", "cancel")}
           </button>
           {mode === "presets" ? (
             <button
@@ -339,7 +340,7 @@ export default function CrewCreateDialog({
               {creating ? (
                 <span className="flex items-center gap-2">
                   <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Creating...
+                  {t("vi", "creating_dots")}
                 </span>
               ) : (
                 `Create ${selectedPresets.size || ""} Crew${selectedPresets.size !== 1 ? "s" : ""}`
@@ -354,10 +355,10 @@ export default function CrewCreateDialog({
               {creating ? (
                 <span className="flex items-center gap-2">
                   <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Creating...
+                  {t("vi", "creating_dots")}
                 </span>
               ) : (
-                "Create Crew"
+                t("vi", "create_crew")
               )}
             </button>
           )}

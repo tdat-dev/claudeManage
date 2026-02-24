@@ -19,11 +19,16 @@ export default function XtermTerminal({
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const isRunningRef = useRef(isRunning);
+  const hydratedInitialLogsRef = useRef(false);
 
   // Keep running ref in sync
   useEffect(() => {
     isRunningRef.current = isRunning;
   }, [isRunning]);
+
+  useEffect(() => {
+    hydratedInitialLogsRef.current = false;
+  }, [workerId]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -82,17 +87,6 @@ export default function XtermTerminal({
 
     termRef.current = term;
 
-    // Replay stored logs for workers that already have output
-    if (initialLogs.length > 0) {
-      for (const log of initialLogs) {
-        if (log.stream === "stderr") {
-          term.write(`\x1b[31m${log.line}\x1b[0m\r\n`);
-        } else {
-          term.write(log.line + "\r\n");
-        }
-      }
-    }
-
     // Listen for raw PTY data (live output)
     const unlisten = listen<[string, string]>("worker-pty-data", (event) => {
       const [wId, data] = event.payload;
@@ -120,6 +114,22 @@ export default function XtermTerminal({
       termRef.current = null;
     };
   }, [workerId]); // Only recreate when workerId changes
+
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term || hydratedInitialLogsRef.current || initialLogs.length === 0) {
+      return;
+    }
+
+    for (const log of initialLogs) {
+      if (log.stream === "stderr") {
+        term.write(`\x1b[31m${log.line}\x1b[0m\r\n`);
+      } else {
+        term.write(log.line + "\r\n");
+      }
+    }
+    hydratedInitialLogsRef.current = true;
+  }, [workerId, initialLogs]);
 
   return (
     <div

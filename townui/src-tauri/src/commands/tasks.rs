@@ -6,6 +6,45 @@ use crate::models::task::{Task, TaskPriority, TaskStatus, TaskUpdateRequest};
 use crate::models::worker::WorkerStatusEnum;
 use crate::state::AppState;
 
+pub(crate) fn create_task_internal(
+    state: &AppState,
+    app: &AppHandle,
+    rig_id: String,
+    title: String,
+    description: String,
+    tags: Vec<String>,
+    priority: TaskPriority,
+    acceptance_criteria: Option<String>,
+    owner_actor_id: Option<String>,
+    hook_id: Option<String>,
+    source: Option<&str>,
+) -> Task {
+    let mut task = Task::new(rig_id.clone(), title, description, tags, priority, acceptance_criteria);
+    task.owner_actor_id = owner_actor_id;
+    task.hook_id = hook_id;
+
+    let mut tasks = state.tasks.lock().unwrap();
+    tasks.push(task.clone());
+    state.save_tasks(&tasks);
+
+    // Audit
+    let payload = serde_json::json!({
+        "title": &task.title,
+        "priority": &task.priority,
+        "source": source.unwrap_or("ui"),
+    }).to_string();
+    state.append_audit_event(&AuditEvent::new(
+        rig_id,
+        None,
+        Some(task.id.clone()),
+        AuditEventType::TaskCreated,
+        payload,
+    ));
+
+    let _ = app.emit("data-changed", "");
+    task
+}
+
 #[tauri::command]
 pub fn list_tasks(rig_id: String, state: State<AppState>) -> Vec<Task> {
     let tasks = state.tasks.lock().unwrap();
@@ -23,26 +62,19 @@ pub fn create_task(
     state: State<AppState>,
     app: AppHandle,
 ) -> Task {
-    let task = Task::new(rig_id.clone(), title, description, tags, priority, acceptance_criteria);
-    let mut tasks = state.tasks.lock().unwrap();
-    tasks.push(task.clone());
-    state.save_tasks(&tasks);
-
-    // Audit
-    let payload = serde_json::json!({
-        "title": &task.title,
-        "priority": &task.priority,
-    }).to_string();
-    state.append_audit_event(&AuditEvent::new(
+    create_task_internal(
+        &state,
+        &app,
         rig_id,
+        title,
+        description,
+        tags,
+        priority,
+        acceptance_criteria,
         None,
-        Some(task.id.clone()),
-        AuditEventType::TaskCreated,
-        payload,
-    ));
-
-    let _ = app.emit("data-changed", "");
-    task
+        None,
+        Some("ui"),
+    )
 }
 
 #[tauri::command]

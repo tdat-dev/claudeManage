@@ -166,6 +166,18 @@
 - [x] Component `FailureCenter.tsx` — list blocked/escalated/failed tasks with reasons
 - [x] Quick actions: reassign, resume, cancel, handoff
 
+### 5.4 Gas Town Operation Aliases
+
+- [x] Backend command aliases: `town_up`, `town_down`, `town_status`, `town_doctor`
+- [x] Backend command alias: `town_fix` (reconcile + compact)
+- [x] Backend command aliases: `town_install`, `town_shutdown`
+- [x] Backend role controls: `get_roles_status`, `set_roles_status`
+- [x] Backend orchestration commands: `mayor_plan_objective`, `deacon_patrol`, `witness_report`
+- [x] HealthDashboard tích hợp controls cho Up/Down/Doctor
+- [x] HealthDashboard tích hợp quick action `Fix`
+- [x] HealthDashboard tích hợp controls Install/Shutdown + Mayor/Deacon/Witness
+- [x] Doctor report: orphan in-progress tasks, failed workers, hook/task mismatch, rig/actor checks
+
 ---
 
 ## Bugs / Technical Debt
@@ -183,8 +195,62 @@
 ## Gas Town Compatibility Checklist (từ docs §13)
 
 - [x] Task tồn tại độc lập với session runtime (JSON persistence)
-- [ ] Handoff có format chuẩn + machine-readable
+- [x] Handoff có format chuẩn + machine-readable
 - [x] Có convoy/group để nhìn tiến độ mục tiêu lớn
 - [x] Có khả năng resume task sau restart
 - [x] Có audit trail đầy đủ cho mọi thay đổi trạng thái
 - [x] Có cơ chế phát hiện stuck tasks tự động
+
+---
+
+## Phase 6: AI Ingress Bridge (MCP-lite)
+
+### 6.1 Backend bridge
+
+- [x] Thêm runtime state cho AI inbox bridge (`running`, `bind_addr`, counters, last_error)
+- [x] Thêm command `start_ai_inbox`, `stop_ai_inbox`, `get_ai_inbox_status`
+- [x] Thêm HTTP endpoint `POST /api/ai/tasks` (single task / batch task)
+- [x] Thêm HTTP endpoint `POST /api/ai/brief` (biến text brief thành nhiều task)
+- [x] Thêm optional token auth qua header `x-townui-token`
+- [x] Thêm CORS mở để UI ngoài có thể kết nối localhost bridge
+- [x] Tái sử dụng luồng create task hiện tại + emit `data-changed` để Kanban update realtime
+
+### 6.2 Frontend integration
+
+- [x] Thêm API wrappers trong `src/lib/tauri.ts` cho AI inbox commands
+- [x] Thêm panel điều khiển AI Inbox Bridge ở `SettingsPage`
+- [x] Hiển thị trạng thái bridge + metrics (`requests/accepted/rejected`)
+- [x] Cung cấp `curl` mẫu để kết nối AI/automation bên ngoài
+
+### 6.3 Follow-up (pending)
+
+- [ ] Tạo UI “AI Quick Intake” ngay trong TaskBoard (nhập brief trực tiếp)
+- [ ] Persist cấu hình AI bridge (bind/token) vào settings
+- [ ] Tự động start bridge theo setting khi app launch
+- [ ] Thêm rate-limit/IP allowlist cho bridge (hardening)
+- [ ] Viết e2e test: POST payload -> task xuất hiện trên Kanban
+
+---
+
+## Phase 7: Formula/Molecule Terminology Alignment
+
+### 7.1 Backend aliases
+
+- [x] `cook_formula(template_id, variables)` -> `Protomolecule`
+- [x] `pour_protomolecule(protomolecule, rig_id, convoy_id)` -> `WorkflowInstance`
+- [x] `create_wisp_preview(template_id, rig_id, variables)` -> ephemeral `Wisp` preview (non-persistent)
+
+### 7.2 Frontend SDK
+
+- [x] Thêm types + invoke wrappers cho `Protomolecule` / `WispPreview` trong `src/lib/tauri.ts`
+
+---
+
+## Phase 8: Duplicate-Execution Guard (Lease)
+
+- [x] Hook model thêm `lease_token`, `lease_expires_at` (backward-compatible serde default)
+- [x] `sling` / `assign_to_hook` phát lease mới khi dispatch
+- [x] `resume_hook` chặn resume khi lease còn active và phát lease mới khi resume hợp lệ
+- [x] `done` clear lease khi đóng task/hook
+- [x] queue snapshot expose lease metadata cho quan sát
+- [x] supervisor reconcile clear lease khi requeue/clear orphan hook

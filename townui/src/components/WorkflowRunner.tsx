@@ -4,8 +4,10 @@ import {
   WorkflowInstance,
   WorkflowStep,
   StepStatus,
+  spawnWorker,
 } from "../lib/tauri";
 import { useWorkflows } from "../hooks/useWorkflows";
+import { useCrews } from "../hooks/useCrews";
 
 interface WorkflowRunnerProps {
   rigId: string;
@@ -57,6 +59,36 @@ function StepStatusBadge({ status }: { status: StepStatus }) {
       {status}
     </span>
   );
+}
+
+function resolveStepCommand(
+  commandTemplate: string,
+  variables: Record<string, string>,
+): string {
+  return commandTemplate.replace(/\{\{(.*?)\}\}/g, (_, rawKey: string) => {
+    const key = rawKey.trim();
+    return variables[key] ?? "";
+  });
+}
+
+function getFirstReadyStep(
+  instance: WorkflowInstance,
+  template: WorkflowTemplate | null,
+): WorkflowStep | null {
+  if (!template) return null;
+
+  for (const step of template.steps) {
+    const stepState = instance.steps_status[step.step_id];
+    if (!stepState || stepState.status !== "pending") continue;
+
+    const depsReady = step.dependencies.every((dep) => {
+      const depStatus = instance.steps_status[dep]?.status;
+      return depStatus === "done" || depStatus === "skipped";
+    });
+    if (depsReady) return step;
+  }
+
+  return null;
 }
 
 // ── Template Creator ──
@@ -338,12 +370,14 @@ function InstanceView({
   instance,
   template,
   onAdvance,
+  onRunStep,
   onStart,
   onCancel,
 }: {
   instance: WorkflowInstance;
   template: WorkflowTemplate | null;
   onAdvance: (stepId: string, status: StepStatus) => Promise<void>;
+  onRunStep: (step: WorkflowStep) => Promise<void>;
   onStart: () => Promise<void>;
   onCancel: () => Promise<void>;
 }) {
@@ -438,7 +472,7 @@ function InstanceView({
               <div className="flex items-center gap-1 shrink-0">
                 {canRun && (
                   <button
-                    onClick={() => onAdvance(step.step_id, "running")}
+                    onClick={() => onRunStep(step)}
                     className="btn-primary !py-0.5 !px-2 !text-[10px]"
                   >
                     ▶ Run
@@ -489,11 +523,13 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
     advance,
     cancel,
   } = useWorkflows(rigId || null);
+  const { crews } = useCrews(rigId || null);
 
   const [showCreateTemplate, setShowCreateTemplate] = useState(false);
   const [instantiateTarget, setInstantiateTarget] =
     useState<WorkflowTemplate | null>(null);
   const [tab, setTab] = useState<"instances" | "templates">("instances");
+  const [runError, setRunError] = useState<string | null>(null);
 
   // Confirm delete
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -563,6 +599,12 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
+        {runError && (
+          <div className="rounded-xl border border-town-danger/25 bg-town-danger/10 px-4 py-2.5 text-xs text-town-danger">
+            {runError}
+          </div>
+        )}
+
         {loading && (
           <div className="flex items-center justify-center py-8">
             <div className="w-5 h-5 border-2 border-town-accent/30 border-t-town-accent rounded-full animate-spin" />
@@ -728,6 +770,35 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
               const tpl =
                 templates.find((t) => t.template_id === inst.template_id) ??
                 null;
+
+              const runStepWithWorker = async (
+                instanceSnapshot: WorkflowInstance,
+                step: WorkflowStep,
+              ) => {
+                setRunError(null);
+                if (crews.length === 0) {
+                  throw new Error(
+                    "No active crew available. Create a crew before starting workflow steps.",
+                  );
+                }
+
+                const command = resolveStepCommand(
+                  step.command_template,
+                  instanceSnapshot.variables_resolved ?? {},
+                );
+                const prompt = command.trim() || step.title || step.step_id;
+                const agentType =
+                  (step.agent_type || "codex").trim() || "codex";
+                const worker = await spawnWorker(crews[0].id, agentType, prompt);
+
+                await advance(
+                  instanceSnapshot.instance_id,
+                  step.step_id,
+                  "running",
+                  worker.id,
+                );
+              };
+
               return (
                 <InstanceView
                   key={inst.instance_id}
@@ -736,8 +807,23 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                   onAdvance={async (stepId, status) => {
                     await advance(inst.instance_id, stepId, status);
                   }}
+                  onRunStep={async (step) => {
+                    try {
+                      await runStepWithWorker(inst, step);
+                    } catch (e) {
+                      setRunError(String(e));
+                    }
+                  }}
                   onStart={async () => {
-                    await start(inst.instance_id);
+                    try {
+                      const started = await start(inst.instance_id);
+                      const firstReady = getFirstReadyStep(started, tpl);
+                      if (firstReady) {
+                        await runStepWithWorker(started, firstReady);
+                      }
+                    } catch (e) {
+                      setRunError(String(e));
+                    }
                   }}
                   onCancel={async () => {
                     await cancel(inst.instance_id);

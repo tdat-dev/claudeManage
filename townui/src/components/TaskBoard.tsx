@@ -17,14 +17,18 @@ interface TaskBoardProps {
   onEdit: (id: string, updates: TaskUpdate) => void;
   onDelete: (id: string) => void;
   onExecute: (task: TaskItem) => void;
+  onQuickStart?: (task: TaskItem) => Promise<void> | void;
   onSling?: (taskId: string, hookId: string) => Promise<void>;
+  onAiIntake?: (
+    brief: string,
+  ) => Promise<{ created: number; ignoredLines: number }>;
 }
 
 // ── Column definitions ──
 
 interface KanbanColumn {
   id: string;
-  label: string;
+  labelKey: string;
   statuses: TaskStatus[];
   icon: string;
   accentColor: string;
@@ -37,7 +41,7 @@ interface KanbanColumn {
 const COLUMNS: KanbanColumn[] = [
   {
     id: "todo",
-    label: "To Do",
+    labelKey: "col_todo",
     statuses: ["todo", "deferred"],
     icon: "○",
     accentColor: "text-slate-400",
@@ -48,7 +52,7 @@ const COLUMNS: KanbanColumn[] = [
   },
   {
     id: "in_progress",
-    label: "In Progress",
+    labelKey: "col_in_progress",
     statuses: ["in_progress", "escalated"],
     icon: "◉",
     accentColor: "text-town-accent",
@@ -59,7 +63,7 @@ const COLUMNS: KanbanColumn[] = [
   },
   {
     id: "blocked",
-    label: "Blocked",
+    labelKey: "col_blocked",
     statuses: ["blocked"],
     icon: "⊘",
     accentColor: "text-orange-400",
@@ -70,7 +74,7 @@ const COLUMNS: KanbanColumn[] = [
   },
   {
     id: "done",
-    label: "Done",
+    labelKey: "col_done",
     statuses: ["done", "cancelled"],
     icon: "✓",
     accentColor: "text-emerald-400",
@@ -84,7 +88,7 @@ const COLUMNS: KanbanColumn[] = [
 const priorityConfig: Record<
   TaskPriority,
   {
-    label: string;
+    labelKey: string;
     color: string;
     bgColor: string;
     icon: string;
@@ -92,28 +96,28 @@ const priorityConfig: Record<
   }
 > = {
   critical: {
-    label: "Critical",
+    labelKey: "pri_critical",
     color: "text-red-400",
     bgColor: "bg-red-500/12 border-red-500/20",
     icon: "🔴",
     barColor: "bg-red-500",
   },
   high: {
-    label: "High",
+    labelKey: "pri_high",
     color: "text-orange-400",
     bgColor: "bg-orange-500/12 border-orange-500/20",
     icon: "🟠",
     barColor: "bg-orange-500",
   },
   medium: {
-    label: "Medium",
+    labelKey: "pri_medium",
     color: "text-yellow-400",
     bgColor: "bg-yellow-500/10 border-yellow-500/20",
     icon: "🟡",
     barColor: "bg-yellow-500",
   },
   low: {
-    label: "Low",
+    labelKey: "pri_low",
     color: "text-blue-400",
     bgColor: "bg-blue-500/10 border-blue-500/20",
     icon: "🔵",
@@ -122,20 +126,20 @@ const priorityConfig: Record<
 };
 
 const subStatusConfig: Partial<
-  Record<TaskStatus, { label: string; color: string; bgColor: string }>
+  Record<TaskStatus, { labelKey: string; color: string; bgColor: string }>
 > = {
   deferred: {
-    label: "Deferred",
+    labelKey: "status_deferred",
     color: "text-amber-400",
     bgColor: "bg-amber-500/10",
   },
   escalated: {
-    label: "Escalated",
+    labelKey: "status_escalated",
     color: "text-rose-400",
     bgColor: "bg-rose-500/10",
   },
   cancelled: {
-    label: "Cancelled",
+    labelKey: "status_cancelled",
     color: "text-zinc-400",
     bgColor: "bg-zinc-500/10",
   },
@@ -171,7 +175,9 @@ export default function TaskBoard({
   onEdit,
   onDelete,
   onExecute,
+  onQuickStart,
   onSling,
+  onAiIntake,
 }: TaskBoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTargetCol, setDropTargetCol] = useState<string | null>(null);
@@ -182,6 +188,10 @@ export default function TaskBoard({
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
   const [quickAddCol, setQuickAddCol] = useState<string | null>(null);
   const [quickAddTitle, setQuickAddTitle] = useState("");
+  const [aiBrief, setAiBrief] = useState("");
+  const [aiIntaking, setAiIntaking] = useState(false);
+  const [aiIntakeError, setAiIntakeError] = useState<string | null>(null);
+  const [aiIntakeSummary, setAiIntakeSummary] = useState<string | null>(null);
   const quickAddRef = useRef<HTMLInputElement>(null);
 
   // Sync selected task with latest data
@@ -275,7 +285,7 @@ export default function TaskBoard({
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-town-accent/30 border-t-town-accent rounded-full animate-spin" />
-          <span className="text-sm text-town-text-muted">Loading tasks...</span>
+          <span className="text-sm text-town-text-muted">{t(language, "loading")}</span>
         </div>
       </div>
     );
@@ -297,11 +307,11 @@ export default function TaskBoard({
     counts.total > 0 ? Math.round((counts.done / counts.total) * 100) : 0;
 
   return (
-    <div className="flex flex-col h-full animate-fade-in">
+    <div className="flex flex-col h-full animate-fade-in min-h-0">
       {/* Header */}
-      <div className="shrink-0 px-6 pt-5 pb-4 space-y-3">
+      <div className="shrink-0 px-3 sm:px-4 lg:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 space-y-3">
         {/* Title row */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-accent flex items-center justify-center shadow-glow-sm">
               <svg
@@ -321,17 +331,16 @@ export default function TaskBoard({
               </svg>
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight">Task Board</h1>
+              <h1 className="text-xl font-bold tracking-tight">{t(language, "task_board")}</h1>
               <p className="text-xs text-town-text-muted mt-0.5">
-                {counts.total} task{counts.total !== 1 ? "s" : ""} ·{" "}
-                {donePercent}% complete
+                {counts.total} {t(language, "tasks_count")} · {donePercent}% {t(language, "task_complete")}
               </p>
             </div>
           </div>
           <button
             onClick={onCreateClick}
-            title="New Task (Ctrl+N)"
-            className="btn-primary !py-2 !px-4 !text-sm inline-flex items-center gap-2"
+            title={`${t(language, "task_new")} (Ctrl+N)`}
+            className="btn-primary !py-2 !px-4 !text-sm inline-flex items-center justify-center gap-2 w-full sm:w-auto"
           >
             <svg
               width="14"
@@ -345,14 +354,14 @@ export default function TaskBoard({
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            New Task
+            {t(language, "task_new")}
           </button>
         </div>
 
         {/* Toolbar: search + filters + stats */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-3">
           {/* Search */}
-          <div className="relative flex-1 max-w-xs">
+          <div className="relative w-full lg:flex-1 lg:max-w-sm">
             <svg
               width="14"
               height="14"
@@ -369,7 +378,7 @@ export default function TaskBoard({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search tasks..."
+              placeholder={t(language, "task_search")}
               className="input-base !pl-9 !py-1.5 !text-xs"
             />
             {searchQuery && (
@@ -393,27 +402,29 @@ export default function TaskBoard({
           </div>
 
           {/* Priority filter chips */}
-          <div className="flex items-center gap-1">
-            {(["all", "critical", "high", "medium", "low"] as const).map(
-              (p) => (
-                <button
-                  key={p}
-                  onClick={() => setFilterPriority(p)}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${filterPriority === p
+          <div className="w-full lg:flex-1 min-w-0">
+            <div className="flex items-center gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {(["all", "critical", "high", "medium", "low"] as const).map(
+                (p) => (
+                  <button
+                    key={p}
+                    onClick={() => setFilterPriority(p)}
+                    className={`shrink-0 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${filterPriority === p
                       ? "bg-town-accent/20 text-town-accent border border-town-accent/30"
                       : "text-town-text-faint hover:text-town-text-muted hover:bg-town-surface-hover border border-transparent"
-                    }`}
-                >
-                  {p === "all"
-                    ? "All"
-                    : priorityConfig[p].icon + " " + priorityConfig[p].label}
-                </button>
-              ),
-            )}
+                      }`}
+                  >
+                    {p === "all"
+                      ? t(language, "all")
+                      : priorityConfig[p].icon + " " + t(language, priorityConfig[p].labelKey)}
+                  </button>
+                ),
+              )}
+            </div>
           </div>
 
           {/* Progress mini bar */}
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2 lg:ml-auto">
             <div className="flex gap-0.5">
               {COLUMNS.map((col) => {
                 const count =
@@ -428,7 +439,7 @@ export default function TaskBoard({
                   <div
                     key={col.id}
                     className="flex items-center gap-1"
-                    title={`${col.label}: ${count}`}
+                    title={`${t(language, col.labelKey)}: ${count}`}
                   >
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${col.dotColor}`}
@@ -442,10 +453,66 @@ export default function TaskBoard({
             </div>
           </div>
         </div>
+
+        {/* AI Quick Intake */}
+        <div className="glass-card p-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-2">
+            <div>
+              <h3 className="text-xs font-semibold text-town-text">
+                AI Quick Intake
+              </h3>
+              <p className="text-[11px] text-town-text-faint mt-0.5">
+                Paste brief to split into tasks automatically.
+              </p>
+            </div>
+            <button
+              disabled={!onAiIntake || aiIntaking || !aiBrief.trim()}
+              onClick={async () => {
+                if (!onAiIntake || !aiBrief.trim()) return;
+                try {
+                  setAiIntaking(true);
+                  setAiIntakeError(null);
+                  setAiIntakeSummary(null);
+                  const result = await onAiIntake(aiBrief.trim());
+                  setAiIntakeSummary(
+                    `Created ${result.created} task(s)${
+                      result.ignoredLines > 0
+                        ? `, ignored ${result.ignoredLines} line(s)`
+                        : ""
+                    }.`,
+                  );
+                  setAiBrief("");
+                } catch (e) {
+                  setAiIntakeError(String(e));
+                } finally {
+                  setAiIntaking(false);
+                }
+              }}
+              className="btn-primary !py-1.5 !px-3 !text-xs disabled:opacity-60 w-full sm:w-auto"
+            >
+              {aiIntaking ? "Ingesting..." : "Ingest Brief"}
+            </button>
+          </div>
+          <textarea
+            value={aiBrief}
+            onChange={(e) => setAiBrief(e.target.value)}
+            placeholder="- [P1] Add auth guard to API routes #backend&#10;- Create migration for user profile fields #db&#10;- Update onboarding screen copy #frontend"
+            rows={4}
+            className="input-base w-full !text-xs !py-2 resize-y"
+          />
+          {aiIntakeSummary && (
+            <p className="text-[11px] text-emerald-300 mt-2">{aiIntakeSummary}</p>
+          )}
+          {aiIntakeError && (
+            <p className="text-[11px] text-rose-300 mt-2">
+              Intake failed: {aiIntakeError}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Board */}
-      <div className="flex-1 flex gap-3 px-4 pb-4 overflow-x-auto min-h-0">
+      <div className="flex-1 flex gap-3 px-3 sm:px-4 pb-4 overflow-x-auto min-h-0 snap-x snap-mandatory">
         {COLUMNS.map((col) => {
           const colTasks = columnTasks(col);
           const isDropTarget = dropTargetCol === col.id;
@@ -461,9 +528,9 @@ export default function TaskBoard({
           return (
             <div
               key={col.id}
-              className={`flex flex-col flex-1 min-w-[240px] max-w-[360px] rounded-xl border transition-all duration-200 ${isDropTarget
-                  ? `${col.borderAccent} bg-town-accent/[0.03] shadow-[0_0_24px_rgba(124,92,252,0.08)]`
-                  : "border-town-border/25 bg-town-bg/30"
+              className={`snap-start flex-none w-[86vw] sm:w-[340px] lg:w-[320px] xl:flex-1 xl:min-w-[260px] xl:max-w-none flex flex-col rounded-xl border transition-all duration-200 ${isDropTarget
+                ? `${col.borderAccent} bg-town-accent/[0.03] shadow-[0_0_24px_rgba(124,92,252,0.08)]`
+                : "border-town-border/25 bg-town-bg/30"
                 }`}
               onDragOver={(e) => handleDragOver(e, col.id)}
               onDragLeave={handleDragLeave}
@@ -477,7 +544,7 @@ export default function TaskBoard({
                 <span
                   className={`text-[11px] font-bold uppercase tracking-wider ${col.accentColor}`}
                 >
-                  {col.label}
+                  {t(language, col.labelKey)}
                 </span>
                 <span
                   className={`ml-auto text-[11px] font-bold ${col.accentColor} opacity-50 bg-white/5 px-1.5 py-0.5 rounded`}
@@ -510,7 +577,7 @@ export default function TaskBoard({
                         setQuickAddCol(null);
                         setQuickAddTitle("");
                       }}
-                      placeholder="Task title... (Enter → create dialog)"
+                      placeholder={t(language, "task_title_placeholder")}
                       className="input-base !py-1.5 !px-2.5 !text-xs flex-1"
                     />
                   </div>
@@ -537,7 +604,7 @@ export default function TaskBoard({
                       <line x1="12" y1="5" x2="12" y2="19" />
                       <line x1="5" y1="12" x2="19" y2="12" />
                     </svg>
-                    Add
+                    {t(language, "add")}
                   </button>
                 )}
               </div>
@@ -547,7 +614,7 @@ export default function TaskBoard({
                 {colTasks.length === 0 ? (
                   <div className="flex items-center justify-center h-full min-h-[60px]">
                     <p className="text-[11px] text-town-text-faint/50 italic">
-                      {isDropTarget ? "↓ Drop here" : "No tasks"}
+                      {isDropTarget ? t(language, "task_drop_here") : t(language, "task_no_tasks")}
                     </p>
                   </div>
                 ) : (
@@ -555,6 +622,7 @@ export default function TaskBoard({
                     <TaskCard
                       key={task.id}
                       task={task}
+                      language={language}
                       isDragging={draggingId === task.id}
                       isSelected={selectedTask?.id === task.id}
                       onDragStart={handleDragStart}
@@ -567,10 +635,15 @@ export default function TaskBoard({
                       onQuickAction={(action) => {
                         if (action === "done")
                           onEdit(task.id, { status: "done" });
-                        else if (action === "start")
-                          onEdit(task.id, { status: "in_progress" });
+                        else if (action === "start") {
+                          if (onQuickStart) {
+                            void onQuickStart(task);
+                          } else {
+                            onEdit(task.id, { status: "in_progress" });
+                          }
+                        }
                         else if (action === "delete") {
-                          if (confirm(`Delete "${task.title}"?`))
+                          if (confirm(`${t(language, "task_delete_confirm")} "${task.title}"?`))
                             onDelete(task.id);
                         }
                       }}
@@ -608,6 +681,7 @@ export default function TaskBoard({
 
 function TaskCard({
   task,
+  language,
   isDragging,
   isSelected,
   onDragStart,
@@ -616,6 +690,7 @@ function TaskCard({
   onQuickAction,
 }: {
   task: TaskItem;
+  language: AppLanguage;
   isDragging: boolean;
   isSelected: boolean;
   onDragStart: (e: DragEvent, taskId: string) => void;
@@ -632,7 +707,7 @@ function TaskCard({
       onDragStart={(e) => onDragStart(e, task.id)}
       onDragEnd={onDragEnd}
       onClick={onClick}
-      className={`group relative rounded-lg border p-2.5 cursor-grab active:cursor-grabbing select-none
+      className={`group relative rounded-lg border p-2.5 sm:p-2.5 cursor-grab active:cursor-grabbing select-none
         transition-all duration-150
         ${isDragging
           ? "opacity-30 scale-95 border-town-accent/40 bg-town-accent/5 rotate-1"
@@ -656,7 +731,7 @@ function TaskCard({
             <span
               className={`text-[9px] font-medium px-1.5 py-px rounded ${sub.bgColor} ${sub.color}`}
             >
-              {sub.label}
+              {sub.labelKey ? t(language, sub.labelKey) : ""}
             </span>
           )}
           {task.dependencies.length > 0 && (
@@ -673,7 +748,7 @@ function TaskCard({
         </div>
 
         {/* Title */}
-        <h4 className="text-[12px] font-semibold leading-snug line-clamp-2 text-town-text/90">
+        <h4 className="text-[12px] sm:text-[12px] font-semibold leading-snug line-clamp-2 text-town-text/90">
           {task.title}
         </h4>
 
@@ -713,7 +788,7 @@ function TaskCard({
 
         {/* Quick actions on hover */}
         <div
-          className="hidden group-hover:flex items-center gap-1 mt-1.5 pt-1.5 border-t border-town-border/15"
+          className="flex items-center gap-1 mt-1.5 pt-1.5 border-t border-town-border/15 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
         >
           {task.status === "todo" && (
@@ -721,7 +796,7 @@ function TaskCard({
               onClick={() => onQuickAction("start")}
               className="text-[10px] text-town-accent hover:text-town-accent/80 font-medium px-1.5 py-0.5 rounded hover:bg-town-accent/10 transition-colors"
             >
-              ▶ Start
+              {t(language, "task_start")}
             </button>
           )}
           {task.status === "in_progress" && (
@@ -729,7 +804,7 @@ function TaskCard({
               onClick={() => onQuickAction("done")}
               className="text-[10px] text-emerald-400 hover:text-emerald-300 font-medium px-1.5 py-0.5 rounded hover:bg-emerald-500/10 transition-colors"
             >
-              ✓ Done
+              {t(language, "task_done")}
             </button>
           )}
           <button
@@ -784,13 +859,13 @@ function TaskDetailPanel({
     .filter(Boolean) as TaskItem[];
 
   return (
-    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-stretch" onClick={onClose}>
       {/* Backdrop */}
       <div className="flex-1 bg-black/50 backdrop-blur-sm" />
 
       {/* Panel */}
       <div
-        className="w-[440px] h-full bg-town-surface border-l border-town-border/40 shadow-2xl overflow-y-auto animate-slide-left"
+        className="w-full sm:w-[440px] h-[92vh] sm:h-full bg-town-surface border-t sm:border-t-0 sm:border-l border-town-border/40 shadow-2xl overflow-y-auto animate-slide-left rounded-t-2xl sm:rounded-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -799,7 +874,7 @@ function TaskDetailPanel({
             <div className="flex items-center gap-2">
               <span className={`text-sm ${pConfig.color}`}>{pConfig.icon}</span>
               <span className={`text-[11px] font-medium ${pConfig.color}`}>
-                {pConfig.label} Priority
+                {t(language, pConfig.labelKey)} {t(language, "priority")}
               </span>
             </div>
             <div className="flex items-center gap-1">
@@ -908,11 +983,11 @@ function TaskDetailPanel({
                         }
                       }}
                       className={`px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${isActive
-                          ? `${col.headerBg} ${col.accentColor} ${col.borderAccent}`
-                          : "border-town-border/20 text-town-text-faint hover:text-town-text-muted hover:bg-town-surface-hover"
+                        ? `${col.headerBg} ${col.accentColor} ${col.borderAccent}`
+                        : "border-town-border/20 text-town-text-faint hover:text-town-text-muted hover:bg-town-surface-hover"
                         }`}
                     >
-                      {col.icon} {col.label}
+                      {col.icon} {t(language, col.labelKey)}
                     </button>
                   );
                 },
@@ -925,13 +1000,13 @@ function TaskDetailPanel({
                   onClick={() => onEdit(task.id, { status: "escalated" })}
                   className="text-[10px] text-rose-400 hover:bg-rose-500/10 px-2 py-1 rounded transition-colors"
                 >
-                  ↑ Escalate
+                  ↑ {t(language, "status_escalated")}
                 </button>
                 <button
                   onClick={() => onEdit(task.id, { status: "deferred" })}
                   className="text-[10px] text-amber-400 hover:bg-amber-500/10 px-2 py-1 rounded transition-colors"
                 >
-                  ⏸ Defer
+                  ⏸ {t(language, "status_deferred")}
                 </button>
               </div>
             )}
@@ -940,7 +1015,7 @@ function TaskDetailPanel({
           {/* Priority */}
           <div>
             <label className="text-[11px] font-bold uppercase tracking-wider text-town-text-faint mb-2 block">
-              Priority
+              {t(language, "priority")}
             </label>
             <div className="flex gap-1.5">
               {(["low", "medium", "high", "critical"] as TaskPriority[]).map(
@@ -951,11 +1026,11 @@ function TaskDetailPanel({
                       key={p}
                       onClick={() => onEdit(task.id, { priority: p })}
                       className={`px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${task.priority === p
-                          ? `${pc.bgColor} ${pc.color}`
-                          : "border-town-border/20 text-town-text-faint hover:text-town-text-muted hover:bg-town-surface-hover"
+                        ? `${pc.bgColor} ${pc.color}`
+                        : "border-town-border/20 text-town-text-faint hover:text-town-text-muted hover:bg-town-surface-hover"
                         }`}
                     >
-                      {pc.icon} {pc.label}
+                      {pc.icon} {t(language, pc.labelKey)}
                     </button>
                   );
                 },

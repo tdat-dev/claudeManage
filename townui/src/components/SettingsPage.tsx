@@ -1,11 +1,15 @@
 import { useState, useEffect } from "react";
 import {
+  AiInboxStatus,
   AppSettings,
+  getAiInboxStatus,
   getSeedInfo,
   seedWorkflowTemplates,
   SeedInfo,
   listTemplates,
   TemplateInfo,
+  startAiInbox,
+  stopAiInbox,
 } from "../lib/tauri";
 import { t } from "../lib/i18n";
 import { shortenPathForCli } from "../lib/path";
@@ -26,6 +30,7 @@ export default function SettingsPage({
   onValidatePath,
 }: SettingsPageProps) {
   const [draft, setDraft] = useState<AppSettings | null>(null);
+  const [selectedCliKey, setSelectedCliKey] = useState<string>("");
   const [validationResult, setValidationResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [seedInfo, setSeedInfo] = useState<SeedInfo | null>(null);
@@ -33,6 +38,10 @@ export default function SettingsPage({
   const [seedResult, setSeedResult] = useState<string[] | null>(null);
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [editingCliKey, setEditingCliKey] = useState<string | null>(null);
+  const [aiInbox, setAiInbox] = useState<AiInboxStatus | null>(null);
+  const [aiBindAddr, setAiBindAddr] = useState("127.0.0.1:4317");
+  const [aiToken, setAiToken] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
 
   useEffect(() => {
     getSeedInfo()
@@ -41,10 +50,27 @@ export default function SettingsPage({
     listTemplates()
       .then(setTemplates)
       .catch(() => {});
+    getAiInboxStatus()
+      .then((status) => {
+        setAiInbox(status);
+        if (status.bind_addr) setAiBindAddr(status.bind_addr);
+      })
+      .catch(() => {});
   }, []);
 
   const current = draft || settings;
   const language = (current?.language ?? "en") as "en" | "vi";
+  const cliKeys = Object.keys(current?.cli_paths ?? {});
+  const selectedCliValue = selectedCliKey
+    ? (current?.cli_paths?.[selectedCliKey] ?? "")
+    : "";
+
+  useEffect(() => {
+    if (!current) return;
+    if (!selectedCliKey || !current.cli_paths[selectedCliKey]) {
+      setSelectedCliKey(cliKeys[0] ?? "");
+    }
+  }, [current, selectedCliKey, cliKeys]);
 
   if (loading || !current) {
     return (
@@ -104,7 +130,38 @@ export default function SettingsPage({
     }
   };
 
+  const handleStartAiInbox = async () => {
+    setAiBusy(true);
+    try {
+      const status = await startAiInbox(
+        aiBindAddr.trim() || "127.0.0.1:4317",
+        aiToken.trim() || undefined,
+      );
+      setAiInbox(status);
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const handleStopAiInbox = async () => {
+    setAiBusy(true);
+    try {
+      const status = await stopAiInbox();
+      setAiInbox(status);
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
   const isDirty = draft !== null;
+  const bridgeBind = aiInbox?.bind_addr || aiBindAddr;
+  const bridgeUrl = `http://${bridgeBind}`;
 
   return (
     <div className="h-full flex flex-col animate-fade-in">
@@ -189,36 +246,57 @@ export default function SettingsPage({
             </div>
 
             <div className="space-y-3">
-              {Object.entries(current.cli_paths).map(([key, value]) => (
-                <div key={key} className="group flex items-center gap-3">
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-town-text-muted w-28 shrink-0">
+                  Agent
+                </label>
+                <select
+                  value={selectedCliKey}
+                  onChange={(e) => setSelectedCliKey(e.target.value)}
+                  className="select-base flex-1"
+                >
+                  {cliKeys.map((key) => (
+                    <option key={key} value={key}>
+                      {key}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedCliKey && (
+                <div className="group flex items-center gap-3">
                   <label className="text-sm font-medium text-town-text-muted w-28 shrink-0 capitalize">
-                    {key}
+                    Path
                   </label>
                   <div className="flex-1 relative">
                     <input
                       type="text"
                       value={
-                        editingCliKey === key
-                          ? value
-                          : shortenPathForCli(value, 56)
+                        editingCliKey === selectedCliKey
+                          ? selectedCliValue
+                          : shortenPathForCli(selectedCliValue, 56)
                       }
-                      onChange={(e) => updateCliPath(key, e.target.value)}
-                      onFocus={() => setEditingCliKey(key)}
+                      onChange={(e) =>
+                        updateCliPath(selectedCliKey, e.target.value)
+                      }
+                      onFocus={() => setEditingCliKey(selectedCliKey)}
                       onBlur={() =>
-                        setEditingCliKey((prev) => (prev === key ? null : prev))
+                        setEditingCliKey((prev) =>
+                          prev === selectedCliKey ? null : prev,
+                        )
                       }
-                      title={value}
+                      title={selectedCliValue}
                       className="input-base font-mono text-xs pr-20"
                     />
                     <button
-                      onClick={() => handleValidate(value)}
+                      onClick={() => handleValidate(selectedCliValue)}
                       className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2 py-1 rounded-md text-[10px] font-medium bg-town-surface-hover text-town-text-muted hover:text-town-accent hover:bg-town-accent/10 transition-all duration-200"
                     >
                       Validate
                     </button>
                   </div>
                 </div>
-              ))}
+              )}
             </div>
 
             {validationResult && (
@@ -461,6 +539,137 @@ export default function SettingsPage({
             </p>
           </section>
 
+          {/* AI Inbox Bridge */}
+          <section className="glass-card p-5 space-y-4 border border-town-accent/20">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-md bg-town-accent/10 flex items-center justify-center">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="text-town-accent"
+                >
+                  <path d="M8 9h8" />
+                  <path d="M8 15h8" />
+                  <rect x="3" y="4" width="18" height="16" rx="2" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="section-title !mb-0">AI Inbox Bridge</h3>
+                <p className="text-[10px] text-town-text-faint mt-0.5">
+                  External AI/UI can POST tasks directly into Kanban
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-town-text-faint block mb-1">
+                  Bind address
+                </label>
+                <input
+                  type="text"
+                  value={aiBindAddr}
+                  onChange={(e) => setAiBindAddr(e.target.value)}
+                  className="input-base font-mono text-xs"
+                  placeholder="127.0.0.1:4317"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-town-text-faint block mb-1">
+                  Token (optional)
+                </label>
+                <input
+                  type="text"
+                  value={aiToken}
+                  onChange={(e) => setAiToken(e.target.value)}
+                  className="input-base font-mono text-xs"
+                  placeholder="x-townui-token"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {!aiInbox?.running ? (
+                <button
+                  onClick={handleStartAiInbox}
+                  disabled={aiBusy}
+                  className="btn-primary text-sm"
+                >
+                  {aiBusy ? "Starting..." : "Start Bridge"}
+                </button>
+              ) : (
+                <button
+                  onClick={handleStopAiInbox}
+                  disabled={aiBusy}
+                  className="btn-danger text-sm"
+                >
+                  {aiBusy ? "Stopping..." : "Stop Bridge"}
+                </button>
+              )}
+              <span
+                className={`text-xs font-medium ${
+                  aiInbox?.running
+                    ? "text-town-success"
+                    : "text-town-text-faint"
+                }`}
+              >
+                {aiInbox?.running ? `Running on ${bridgeUrl}` : "Stopped"}
+              </span>
+            </div>
+
+            {aiInbox && (
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="rounded-lg bg-town-surface-hover/50 p-2">
+                  <div className="text-town-text-faint">Requests</div>
+                  <div className="font-mono text-town-text">
+                    {aiInbox.requests_total}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-town-surface-hover/50 p-2">
+                  <div className="text-town-text-faint">Accepted</div>
+                  <div className="font-mono text-town-success">
+                    {aiInbox.accepted_total}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-town-surface-hover/50 p-2">
+                  <div className="text-town-text-faint">Rejected</div>
+                  <div className="font-mono text-town-danger">
+                    {aiInbox.rejected_total}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-lg bg-town-bg/40 border border-town-border/30 p-3">
+              <div className="text-[11px] text-town-text-faint mb-1">
+                Example payload
+              </div>
+              <pre className="text-[11px] font-mono text-town-text-muted whitespace-pre-wrap break-all">
+                {`curl -X POST ${bridgeUrl}/api/ai/tasks \\
+  -H "Content-Type: application/json"${
+    aiToken.trim()
+      ? ` \\
+  -H "X-TownUI-Token: ${aiToken.trim()}"`
+      : ""
+  } \\
+  -d '{"rig_id":"<RIG_ID>","title":"Fix login timeout","description":"Investigate auth refresh flow","priority":"high","tags":["backend","auth"]}'`}
+              </pre>
+              <p className="text-[10px] text-town-text-faint mt-2">
+                Also supports batch: {"{ rig_id, tasks: [...] }"} and brief
+                mode: {"{ rig_id, brief }"}.
+              </p>
+              {aiInbox?.last_error && (
+                <p className="text-[10px] text-town-danger mt-2">
+                  Last error: {aiInbox.last_error}
+                </p>
+              )}
+            </div>
+          </section>
+
           {/* Prompt Template Catalog */}
           <section className="glass-card p-5 space-y-4">
             <div className="flex items-center gap-2.5">
@@ -649,6 +858,232 @@ export default function SettingsPage({
                 )}
               </div>
             )}
+          </section>
+
+          {/* ── Startup Priming ────────────────────────────────── */}
+          <section className="glass-card p-5 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-md bg-purple-500/10 flex items-center justify-center">
+                <span className="text-sm">🧠</span>
+              </div>
+              <div>
+                <h3 className="section-title !mb-0">Startup Priming</h3>
+                <p className="text-[11px] text-town-text-faint mt-0.5">
+                  Inject a context prompt into agents right after they spawn
+                </p>
+              </div>
+            </div>
+
+            {/* Enable toggle */}
+            <label className="flex items-center justify-between">
+              <span className="text-sm">Enable startup priming</span>
+              <button
+                role="switch"
+                aria-checked={current.startup_priming_enabled ?? true}
+                onClick={() =>
+                  setDraft({
+                    ...current,
+                    startup_priming_enabled: !(
+                      current.startup_priming_enabled ?? true
+                    ),
+                  })
+                }
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                  (current.startup_priming_enabled ?? true)
+                    ? "bg-town-accent"
+                    : "bg-town-border"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
+                    (current.startup_priming_enabled ?? true)
+                      ? "translate-x-4"
+                      : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </label>
+
+            {/* Priming delay */}
+            <div className="space-y-1">
+              <label className="text-xs text-town-text-muted">
+                Priming delay (ms after spawn)
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={10000}
+                step={100}
+                value={current.priming_delay_ms ?? 1500}
+                onChange={(e) =>
+                  setDraft({
+                    ...current,
+                    priming_delay_ms: parseInt(e.target.value, 10) || 1500,
+                  })
+                }
+                className="input-base w-32"
+              />
+            </div>
+
+            {/* Priming template */}
+            <div className="space-y-1">
+              <label className="text-xs text-town-text-muted">
+                Custom priming template (leave blank for built-in)
+              </label>
+              <textarea
+                rows={4}
+                value={current.priming_template ?? ""}
+                placeholder="You are working on {{rig.name}} ({{rig.path}})…"
+                onChange={(e) =>
+                  setDraft({
+                    ...current,
+                    priming_template: e.target.value || null,
+                  })
+                }
+                className="input-base w-full resize-none font-mono text-[11px]"
+              />
+              <p className="text-[10px] text-town-text-faint">
+                Supports: {"{{"}rig.name{"}}"}, {"{{"}rig.path{"}}"}, {"{{"}
+                crew.name{"}}"}, {"{{"}task.title{"}}"}
+              </p>
+            </div>
+          </section>
+
+          {/* ── Propulsion & Witness ───────────────────────────── */}
+          <section className="glass-card p-5 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-md bg-green-500/10 flex items-center justify-center">
+                <span className="text-sm">🚀</span>
+              </div>
+              <div>
+                <h3 className="section-title !mb-0">
+                  Propulsion &amp; Witness
+                </h3>
+                <p className="text-[11px] text-town-text-faint mt-0.5">
+                  Auto-push idle crews and manage polecats
+                </p>
+              </div>
+            </div>
+
+            {/* Propulsion enable */}
+            <label className="flex items-center justify-between">
+              <span className="text-sm">Enable propulsion</span>
+              <button
+                role="switch"
+                aria-checked={current.propulsion_enabled ?? false}
+                onClick={() =>
+                  setDraft({
+                    ...current,
+                    propulsion_enabled: !(current.propulsion_enabled ?? false),
+                  })
+                }
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                  (current.propulsion_enabled ?? false)
+                    ? "bg-town-accent"
+                    : "bg-town-border"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
+                    (current.propulsion_enabled ?? false)
+                      ? "translate-x-4"
+                      : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </label>
+
+            {/* Propulsion interval */}
+            <div className="space-y-1">
+              <label className="text-xs text-town-text-muted">
+                Propulsion interval (seconds)
+              </label>
+              <input
+                type="number"
+                min={10}
+                max={3600}
+                step={10}
+                value={current.propulsion_interval_seconds ?? 60}
+                onChange={(e) =>
+                  setDraft({
+                    ...current,
+                    propulsion_interval_seconds:
+                      parseInt(e.target.value, 10) || 60,
+                  })
+                }
+                className="input-base w-32"
+              />
+            </div>
+
+            {/* Witness auto-spawn */}
+            <label className="flex items-center justify-between">
+              <span className="text-sm">Witness: auto-spawn polecats</span>
+              <button
+                role="switch"
+                aria-checked={current.witness_auto_spawn ?? false}
+                onClick={() =>
+                  setDraft({
+                    ...current,
+                    witness_auto_spawn: !(current.witness_auto_spawn ?? false),
+                  })
+                }
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                  (current.witness_auto_spawn ?? false)
+                    ? "bg-town-accent"
+                    : "bg-town-border"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
+                    (current.witness_auto_spawn ?? false)
+                      ? "translate-x-4"
+                      : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </label>
+
+            {/* Max polecats */}
+            <div className="space-y-1">
+              <label className="text-xs text-town-text-muted">
+                Max polecats per rig
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={current.max_polecats_per_rig ?? 5}
+                onChange={(e) =>
+                  setDraft({
+                    ...current,
+                    max_polecats_per_rig: parseInt(e.target.value, 10) || 5,
+                  })
+                }
+                className="input-base w-24"
+              />
+            </div>
+
+            {/* Polecat nudge after */}
+            <div className="space-y-1">
+              <label className="text-xs text-town-text-muted">
+                Nudge polecat after (seconds idle)
+              </label>
+              <input
+                type="number"
+                min={10}
+                max={600}
+                step={10}
+                value={current.polecat_nudge_after_seconds ?? 60}
+                onChange={(e) =>
+                  setDraft({
+                    ...current,
+                    polecat_nudge_after_seconds:
+                      parseInt(e.target.value, 10) || 60,
+                  })
+                }
+                className="input-base w-32"
+              />
+            </div>
           </section>
 
           {/* Language */}

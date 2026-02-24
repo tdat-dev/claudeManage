@@ -3,6 +3,7 @@ import { WorkerInfo, CrewInfo, LogEntry } from "../lib/tauri";
 import { listen } from "@tauri-apps/api/event";
 import LogViewer from "./LogViewer";
 import { useSettings } from "../hooks/useSettings";
+import { t } from "../lib/i18n";
 
 interface WorkerPanelProps {
   workers: WorkerInfo[];
@@ -76,30 +77,30 @@ export default function WorkerPanel({
   };
 
   if (loading) {
-    return <div className="p-6 text-town-text-muted">Loading workers...</div>;
+    return <div className="p-6 text-town-text-muted">{t("vi", "loading_workers")}</div>;
   }
 
   return (
     <div className="p-6 max-w-4xl">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Workers</h1>
+        <h1 className="text-2xl font-bold">{t("vi", "nav_workers")}</h1>
         <button
           onClick={() => setShowSpawn(!showSpawn)}
           className="px-4 py-2 bg-town-accent hover:bg-town-accent-hover rounded text-sm font-medium transition-colors"
         >
-          + Spawn Worker
+          + {t("vi", "spawn_new_worker")}
         </button>
       </div>
 
       {/* Spawn form */}
       {showSpawn && (
         <div className="bg-town-surface border border-town-border rounded-lg p-4 mb-4">
-          <h3 className="text-sm font-semibold mb-3">Spawn New Worker</h3>
+          <h3 className="text-sm font-semibold mb-3">{t("vi", "spawn_new_worker")}</h3>
           <div className="space-y-3">
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="block text-xs text-town-text-muted mb-1">
-                  Crew
+                  {t("vi", "nav_crews")}
                 </label>
                 <select
                   value={crewId}
@@ -115,7 +116,7 @@ export default function WorkerPanel({
               </div>
               <div className="flex-1">
                 <label className="block text-xs text-town-text-muted mb-1">
-                  Agent
+                  {t("vi", "agent")}
                 </label>
                 <select
                   value={agentType}
@@ -172,14 +173,14 @@ export default function WorkerPanel({
             </div>
             <div>
               <label className="block text-xs text-town-text-muted mb-1">
-                Initial Prompt
+                {t("vi", "initial_prompt")}
               </label>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 rows={3}
                 className="w-full bg-town-bg border border-town-border rounded px-3 py-2 text-sm resize-none"
-                placeholder="What should the agent do?"
+                placeholder={t("vi", "what_agent_do")}
               />
             </div>
             <button
@@ -187,7 +188,7 @@ export default function WorkerPanel({
               disabled={!crewId || crews.length === 0 || spawning}
               className="px-4 py-2 bg-town-success hover:bg-town-success/80 disabled:opacity-50 rounded text-sm font-medium transition-colors"
             >
-              {spawning ? "Spawning..." : "Spawn"}
+              {spawning ? t("vi", "spawning") : t("vi", "spawn")}
             </button>
           </div>
         </div>
@@ -197,7 +198,7 @@ export default function WorkerPanel({
       <div className="grid grid-cols-1 gap-2 mb-4">
         {workers.length === 0 ? (
           <p className="text-sm text-town-text-muted py-4 text-center">
-            No workers running.
+            {t("vi", "no_workers_running")}
           </p>
         ) : (
           workers.map((w) => (
@@ -206,11 +207,10 @@ export default function WorkerPanel({
               onClick={() =>
                 setSelectedWorkerId(w.id === selectedWorkerId ? null : w.id)
               }
-              className={`bg-town-surface border rounded-lg p-3 cursor-pointer transition-colors ${
-                w.id === selectedWorkerId
+              className={`bg-town-surface border rounded-lg p-3 cursor-pointer transition-colors ${w.id === selectedWorkerId
                   ? "border-town-accent"
                   : "border-town-border hover:border-town-text-muted/30"
-              }`}
+                }`}
             >
               <div className="flex items-center justify-between">
                 <div>
@@ -221,13 +221,12 @@ export default function WorkerPanel({
                 </div>
                 <div className="flex items-center gap-2">
                   <span
-                    className={`text-xs px-1.5 py-0.5 rounded ${
-                      w.status === "running"
+                    className={`text-xs px-1.5 py-0.5 rounded ${w.status === "running"
                         ? "bg-town-success/10 text-town-success"
                         : w.status === "failed"
                           ? "bg-town-danger/10 text-town-danger"
                           : "bg-town-text-muted/10 text-town-text-muted"
-                    }`}
+                      }`}
                   >
                     {w.status}
                   </span>
@@ -245,7 +244,7 @@ export default function WorkerPanel({
                 </div>
               </div>
               <div className="text-xs text-town-text-muted mt-1">
-                Started: {new Date(w.started_at).toLocaleString()}
+                {t("vi", "started_label")}: {new Date(w.started_at).toLocaleString()}
               </div>
             </div>
           ))

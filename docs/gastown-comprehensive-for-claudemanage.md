@@ -1,6 +1,6 @@
 ﻿# Gas Town Comprehensive Notes for ClaudeManage
 
-Last updated: 2026-02-12  
+Last updated: 2026-02-24  
 Audience: ClaudeManage engineering team  
 Purpose: tổng hợp khái niệm, workflow, lệnh vận hành, và blueprint triển khai tương đương trong ClaudeManage.
 
@@ -133,7 +133,10 @@ Lệnh thường dùng (định hướng, không thay thế docs chính thức):
 - `gt install`, `gt up`, `gt down`, `gt shutdown`.
 - `gt rig add`, `gt crew add`, `gt worktree`.
 - `gt convoy create`, `gt convoy list`, `gt convoy status`.
+- `gt convoy create --owned --merge {direct|mr|local}` để chọn ownership và merge strategy.
+- `gt convoy land` để hoàn tất và dọn dẹp owned convoy.
 - `gt sling`, `gt hook`, `gt done`, `gt handoff`, `gt resume`.
+- `merge queue --verify` để phát hiện orphaned/missing queue entries.
 - `gt dashboard` để quan sát trạng thái tổng.
 
 ## 8. Runtime integration
@@ -141,6 +144,9 @@ Lệnh thường dùng (định hướng, không thay thế docs chính thức):
 Gas Town hỗ trợ nhiều runtime (Claude, Codex, ...), nhưng giữ abstraction chung:
 
 - Runtime command/args cấu hình theo project/rig.
+- Preset runtime chuyển sang agent-factory dạng data-driven (thêm runtime mới chủ yếu bằng config).
+- Runtime adapter mới trong v0.7.0: Gemini CLI và GitHub Copilot CLI.
+- Nudge delivery có queue/wait-idle mode để giảm mất message khi agent đang bận.
 - Có startup priming để inject context tối thiểu khi runtime không hỗ trợ hook sâu.
 - Vai trò coordinator và worker được ràng bằng identity + mailbox, không hard-code theo runtime.
 
@@ -241,10 +247,22 @@ Bảng cốt lõi:
 - [ ] Có audit trail đầy đủ cho mọi thay đổi trạng thái.
 - [ ] Có cơ chế phát hiện stuck tasks tự động.
 
-## 14. Nguồn tham chiếu
+## 14. Delta mới từ release v0.7.0 (2026-02-16)
+
+- Convoy ownership: thêm `--owned`, `--merge`, và lệnh `gt convoy land`; status/list hiển thị ownership + merge strategy.
+- `gt done` có checkpoint-based recovery, giảm mất tiến độ khi session chết giữa chừng.
+- Agent lifecycle bền hơn: auto-dismiss permission prompt bị treo, phát hiện crew agent chết và restart khi startup.
+- Witness/patrol có JSON receipts cho stale/orphan verdicts, tự đóng orphan molecules, tự recover IN_PROGRESS beads của dead polecats.
+- Hạ tầng thêm submodule support cho worktree và refinery merge queue.
+- Web dashboard có activity timeline theo thời gian, filter, toast/escalation actions, responsive mobile, và ESC để đóng panel.
+- Cleanup kỹ thuật: loại bỏ Beads Classic dead code, chuyển session prefix sang registry-based, và sửa nhiều race conditions.
+
+## 15. Nguồn tham chiếu
 
 - Repository: `https://github.com/steveyegge/gastown`
 - README: `https://github.com/steveyegge/gastown/blob/main/README.md`
+- Release v0.7.0: `https://github.com/steveyegge/gastown/releases/tag/v0.7.0`
+- Changelog: `https://github.com/steveyegge/gastown/blob/main/CHANGELOG.md`
 - Docs hub: `https://docs.gastownhall.ai/`
 - Glossary: `https://docs.gastownhall.ai/glossary/`
 - Convoy concept: `https://docs.gastownhall.ai/concepts/convoy/`

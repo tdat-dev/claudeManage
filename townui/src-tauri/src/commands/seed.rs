@@ -566,13 +566,16 @@ pub fn seed_workflow_templates(state: State<AppState>) -> Result<Vec<String>, St
     Ok(added)
 }
 
-/// Returns the count of available bigtech seed templates.
+/// Returns the count of available bigtech seed templates and Gas Town formulas.
 #[tauri::command]
 pub fn get_seed_info() -> SeedInfo {
     let templates = bigtech_workflow_templates();
+    let formulas = gastown_formula_templates();
     SeedInfo {
         workflow_template_count: templates.len(),
         workflow_template_names: templates.iter().map(|t| t.name.clone()).collect(),
+        formula_count: formulas.len(),
+        formula_names: formulas.iter().map(|t| t.name.clone()).collect(),
         prompt_template_count: 14, // built-in prompts from templates.rs
     }
 }
@@ -581,5 +584,247 @@ pub fn get_seed_info() -> SeedInfo {
 pub struct SeedInfo {
     pub workflow_template_count: usize,
     pub workflow_template_names: Vec<String>,
+    pub formula_count: usize,
+    pub formula_names: Vec<String>,
     pub prompt_template_count: usize,
+}
+
+// ─── Gas Town built-in Formulas ──────────────────────────────────────────────
+
+fn gastown_formula_templates() -> Vec<WorkflowTemplate> {
+    vec![
+        // ── release formula ───────────────────────────────────────────────
+        WorkflowTemplate::new(
+            "Formula: Release".into(),
+            "Gas Town release formula — bump version → build → test → changelog → tag → deploy.".into(),
+            vec![
+                WorkflowStep {
+                    step_id: "bump".into(),
+                    title: "Bump Version".into(),
+                    description: "Determine the next version (semver), update version files.".into(),
+                    command_template: "Bump the {{version_type}} version in {{repo.root}}. Update all version files (package.json, Cargo.toml, __version__, etc.) consistently. Show what changed.".into(),
+                    agent_type: "claude".into(),
+                    dependencies: vec![],
+                    acceptance_criteria: Some("All version files updated consistently to new version".into()),
+                },
+                WorkflowStep {
+                    step_id: "build".into(),
+                    title: "Build & Verify".into(),
+                    description: "Run the build and verify no compile errors.".into(),
+                    command_template: "Run the build process in {{repo.root}}. Fix any build errors. Report build artifacts and bundle size.".into(),
+                    agent_type: "codex".into(),
+                    dependencies: vec!["bump".into()],
+                    acceptance_criteria: Some("Build passes without errors".into()),
+                },
+                WorkflowStep {
+                    step_id: "test".into(),
+                    title: "Run Test Suite".into(),
+                    description: "Execute all tests to confirm release readiness.".into(),
+                    command_template: "Run the full test suite in {{repo.root}}. Report pass/fail counts, any flaky tests, and coverage delta from last release.".into(),
+                    agent_type: "codex".into(),
+                    dependencies: vec!["build".into()],
+                    acceptance_criteria: Some("All tests pass, no regressions".into()),
+                },
+                WorkflowStep {
+                    step_id: "changelog".into(),
+                    title: "Generate Changelog".into(),
+                    description: "Summarise changes since last release into CHANGELOG.md.".into(),
+                    command_template: "Generate a changelog entry for version {{version_type}} in {{repo.root}}. Extract commits since last tag. Group by: Features, Bug Fixes, Breaking Changes, Internal. Write to CHANGELOG.md.".into(),
+                    agent_type: "claude".into(),
+                    dependencies: vec!["test".into()],
+                    acceptance_criteria: Some("CHANGELOG.md updated with categorised release notes".into()),
+                },
+                WorkflowStep {
+                    step_id: "tag".into(),
+                    title: "Create Release Tag".into(),
+                    description: "Create a git tag for the release commit.".into(),
+                    command_template: "Create a signed git tag for the new version in {{repo.root}}. Push the tag to remote. Output the tag name.".into(),
+                    agent_type: "claude".into(),
+                    dependencies: vec!["changelog".into()],
+                    acceptance_criteria: Some("Git tag created and pushed".into()),
+                },
+                WorkflowStep {
+                    step_id: "deploy".into(),
+                    title: "Deploy".into(),
+                    description: "Deploy the release to the target environment.".into(),
+                    command_template: "Deploy the release to {{deploy_target}} from {{repo.root}}. Confirm health checks pass post-deploy. Report deploy URL and any anomalies.".into(),
+                    agent_type: "claude".into(),
+                    dependencies: vec!["tag".into()],
+                    acceptance_criteria: Some("Deploy successful, health checks green".into()),
+                },
+            ],
+            vec!["version_type".into(), "deploy_target".into()],
+        ),
+
+        // ── hotfix formula ────────────────────────────────────────────────
+        WorkflowTemplate::new(
+            "Formula: Hotfix".into(),
+            "Gas Town hotfix formula — fast-track critical fix with minimal blast radius.".into(),
+            vec![
+                WorkflowStep {
+                    step_id: "diagnose".into(),
+                    title: "Diagnose & Locate".into(),
+                    description: "Find the root cause of the production issue.".into(),
+                    command_template: "Diagnose production issue: {{issue_description}}. Find the root cause in {{repo.root}}. Identify the minimal code change needed to fix it. Do NOT refactor.".into(),
+                    agent_type: "claude".into(),
+                    dependencies: vec![],
+                    acceptance_criteria: Some("Root cause identified, fix location known".into()),
+                },
+                WorkflowStep {
+                    step_id: "fix".into(),
+                    title: "Apply Minimal Fix".into(),
+                    description: "Apply the minimal targeted fix. No scope creep.".into(),
+                    command_template: "Apply the hotfix for {{issue_description}} in {{repo.root}}. Minimal change only — no refactoring or unrelated improvements. Add a regression test for the fixed scenario.".into(),
+                    agent_type: "codex".into(),
+                    dependencies: vec!["diagnose".into()],
+                    acceptance_criteria: Some("Fix applied, regression test added".into()),
+                },
+                WorkflowStep {
+                    step_id: "validate".into(),
+                    title: "Validate Fix".into(),
+                    description: "Run smoke tests and the new regression test.".into(),
+                    command_template: "Validate the hotfix in {{repo.root}}: run smoke tests and the new regression test. Confirm the issue is resolved and no new failures introduced.".into(),
+                    agent_type: "codex".into(),
+                    dependencies: vec!["fix".into()],
+                    acceptance_criteria: Some("Regression test passes, smoke tests green".into()),
+                },
+                WorkflowStep {
+                    step_id: "ship".into(),
+                    title: "Ship Hotfix".into(),
+                    description: "Patch version bump, hotfix tag, expedited deploy.".into(),
+                    command_template: "Ship the hotfix from {{repo.root}}: bump patch version, create hotfix tag, deploy immediately to production. Add a one-line entry to CHANGELOG.md under Hotfixes.".into(),
+                    agent_type: "claude".into(),
+                    dependencies: vec!["validate".into()],
+                    acceptance_criteria: Some("Hotfix deployed, patch tag created".into()),
+                },
+            ],
+            vec!["issue_description".into()],
+        ),
+
+        // ── feature-dev formula ───────────────────────────────────────────
+        WorkflowTemplate::new(
+            "Formula: Feature Dev".into(),
+            "Gas Town feature-dev formula — spec → spike → implement → review → ship.".into(),
+            vec![
+                WorkflowStep {
+                    step_id: "spec".into(),
+                    title: "Write Spec".into(),
+                    description: "Write a concise feature spec with goals, non-goals, and success metrics.".into(),
+                    command_template: "Write a feature spec for {{feature_name}} in {{repo.root}}. Include: goal, non-goals, user stories, success metrics, open questions. Keep it under 1 page.".into(),
+                    agent_type: "claude".into(),
+                    dependencies: vec![],
+                    acceptance_criteria: Some("Spec written with clear goals and success metrics".into()),
+                },
+                WorkflowStep {
+                    step_id: "spike".into(),
+                    title: "Technical Spike".into(),
+                    description: "Time-boxed exploration to validate technical approach.".into(),
+                    command_template: "Do a technical spike for {{feature_name}} in {{repo.root}}. Explore: 1) Feasibility 2) Key risks 3) Library options 4) Rough implementation path. Time-box to essentials only. Output findings.".into(),
+                    agent_type: "claude".into(),
+                    dependencies: vec!["spec".into()],
+                    acceptance_criteria: Some("Technical approach validated, risks identified".into()),
+                },
+                WorkflowStep {
+                    step_id: "implement".into(),
+                    title: "Implement Feature".into(),
+                    description: "Full implementation following the spec and spike findings.".into(),
+                    command_template: "Implement {{feature_name}} in {{repo.root}} following the spec. Write clean, tested code. Add unit tests. Follow existing patterns.".into(),
+                    agent_type: "codex".into(),
+                    dependencies: vec!["spike".into()],
+                    acceptance_criteria: Some("Feature implemented with tests".into()),
+                },
+                WorkflowStep {
+                    step_id: "review".into(),
+                    title: "Self-Review".into(),
+                    description: "Review for code quality, security, and spec compliance.".into(),
+                    command_template: "Review the {{feature_name}} implementation in {{repo.root}}. Check: spec compliance, code quality, security issues, test coverage, documentation. Output a review summary.".into(),
+                    agent_type: "claude".into(),
+                    dependencies: vec!["implement".into()],
+                    acceptance_criteria: Some("No blockers, spec requirements met".into()),
+                },
+                WorkflowStep {
+                    step_id: "ship".into(),
+                    title: "Ship Feature".into(),
+                    description: "Merge to main, update docs, notify stakeholders.".into(),
+                    command_template: "Ship {{feature_name}} in {{repo.root}}: merge to main branch, update relevant docs/README, add CHANGELOG entry, create PR description summary.".into(),
+                    agent_type: "claude".into(),
+                    dependencies: vec!["review".into()],
+                    acceptance_criteria: Some("Merged, docs updated, changelog entry written".into()),
+                },
+            ],
+            vec!["feature_name".into()],
+        ),
+
+        // ── database migration formula ─────────────────────────────────────
+        WorkflowTemplate::new(
+            "Formula: Database Migration".into(),
+            "Gas Town DB migration formula — plan → script → dry-run → apply → verify → rollback-plan.".into(),
+            vec![
+                WorkflowStep {
+                    step_id: "plan".into(),
+                    title: "Migration Plan".into(),
+                    description: "Analyse schema changes, estimate size/runtime, identify risks.".into(),
+                    command_template: "Plan a database migration for {{migration_goal}} in {{repo.root}}. Analyse: schema diff, table sizes, index impacts, lock risks, estimated runtime, zero-downtime feasibility.".into(),
+                    agent_type: "claude".into(),
+                    dependencies: vec![],
+                    acceptance_criteria: Some("Migration plan with risk assessment".into()),
+                },
+                WorkflowStep {
+                    step_id: "script".into(),
+                    title: "Write Migration Script".into(),
+                    description: "Write idempotent up/down migration scripts.".into(),
+                    command_template: "Write migration scripts for {{migration_goal}} in {{repo.root}}. Scripts must be: idempotent, have both up and down, handle partial failures gracefully.".into(),
+                    agent_type: "codex".into(),
+                    dependencies: vec!["plan".into()],
+                    acceptance_criteria: Some("Idempotent up/down migration scripts written".into()),
+                },
+                WorkflowStep {
+                    step_id: "dry_run".into(),
+                    title: "Dry Run".into(),
+                    description: "Run migration against a staging copy to measure actual runtime.".into(),
+                    command_template: "Dry-run the migration for {{migration_goal}} in {{repo.root}} against staging. Report: actual runtime, rows affected, any warnings. Flag if runtime exceeds acceptable threshold.".into(),
+                    agent_type: "codex".into(),
+                    dependencies: vec!["script".into()],
+                    acceptance_criteria: Some("Dry run completed, runtime within acceptable range".into()),
+                },
+                WorkflowStep {
+                    step_id: "apply".into(),
+                    title: "Apply Migration".into(),
+                    description: "Apply migration to production with monitoring.".into(),
+                    command_template: "Apply the migration for {{migration_goal}} to production in {{repo.root}}. Monitor for locks, replication lag, error rates during apply. Report completion status.".into(),
+                    agent_type: "claude".into(),
+                    dependencies: vec!["dry_run".into()],
+                    acceptance_criteria: Some("Migration applied without incidents".into()),
+                },
+                WorkflowStep {
+                    step_id: "verify".into(),
+                    title: "Verify & Rollback Plan".into(),
+                    description: "Verify data integrity and document rollback procedure.".into(),
+                    command_template: "Verify the migration for {{migration_goal}} in {{repo.root}}: check row counts, spot-check data integrity, run application smoke tests. Document exact rollback steps with command examples.".into(),
+                    agent_type: "claude".into(),
+                    dependencies: vec!["apply".into()],
+                    acceptance_criteria: Some("Data integrity verified, rollback steps documented".into()),
+                },
+            ],
+            vec!["migration_goal".into()],
+        ),
+    ]
+}
+
+/// Seed Gas Town built-in formula templates into the store (idempotent).
+#[tauri::command]
+pub fn seed_gastown_formulas(state: State<AppState>) -> Result<Vec<String>, String> {
+    let mut templates = state.workflow_templates.lock().unwrap();
+    let existing_names: Vec<String> = templates.iter().map(|t| t.name.clone()).collect();
+    let mut added = Vec::new();
+
+    for tpl in gastown_formula_templates() {
+        if !existing_names.contains(&tpl.name) {
+            added.push(tpl.name.clone());
+            templates.push(tpl);
+        }
+    }
+
+    state.save_workflow_templates(&templates);
+    Ok(added)
 }

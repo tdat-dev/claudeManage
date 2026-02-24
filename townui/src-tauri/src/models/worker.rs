@@ -9,6 +9,13 @@ pub enum WorkerStatusEnum {
     Completed,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum WorkerType {
+    Crew,
+    Polecat,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Worker {
     pub id: String,
@@ -16,10 +23,20 @@ pub struct Worker {
     pub crew_id: String,
     pub agent_type: String,
     pub actor_id: Option<String>,
+    pub worker_type: WorkerType,
     pub status: WorkerStatusEnum,
     pub pid: Option<u32>,
     pub started_at: String,
     pub stopped_at: Option<String>,
+    /// Whether a startup priming context was injected after spawn.
+    #[serde(default)]
+    pub startup_primed: bool,
+    /// Optional task label shown in terminal header (e.g., "fix-auth").
+    #[serde(default)]
+    pub task_label: Option<String>,
+    /// Optional crew name for terminal header display.
+    #[serde(default)]
+    pub crew_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,20 +70,33 @@ pub struct Run {
     pub finished_at: Option<String>,
     pub exit_code: Option<i32>,
     pub diff_stats: Option<String>,
+    /// Optional model tag for A/B testing (e.g., "claude-opus-4", "codex-mini").
+    #[serde(default)]
+    pub model_tag: Option<String>,
+    /// Optional human/automated quality signal [0.0 – 5.0].
+    #[serde(default)]
+    pub quality_signal: Option<f32>,
+    /// Number of revision loops before completion (proxy for difficulty).
+    #[serde(default)]
+    pub revision_count: u32,
 }
 
 impl Worker {
-    pub fn new(rig_id: String, crew_id: String, agent_type: String) -> Self {
+    pub fn new(rig_id: String, crew_id: String, agent_type: String, worker_type: WorkerType, actor_id: Option<String>) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             rig_id,
             crew_id,
             agent_type,
-            actor_id: None,
+            actor_id,
+            worker_type,
             status: WorkerStatusEnum::Running,
             pid: None,
             started_at: chrono::Utc::now().to_rfc3339(),
             stopped_at: None,
+            startup_primed: false,
+            task_label: None,
+            crew_name: None,
         }
     }
 }
@@ -95,6 +125,9 @@ impl Run {
             finished_at: None,
             exit_code: None,
             diff_stats: None,
+            model_tag: None,
+            quality_signal: None,
+            revision_count: 0,
         }
     }
 }

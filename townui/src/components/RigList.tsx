@@ -1,6 +1,7 @@
 import { RigInfo } from "../lib/tauri";
 import { shortenPathForCli } from "../lib/path";
 import { SkeletonGroup, BlockSkeleton } from "./Skeleton";
+import { AppLanguage, t } from "../lib/i18n";
 
 interface RigListProps {
   rigs: RigInfo[];
@@ -8,6 +9,7 @@ interface RigListProps {
   loading?: boolean;
   onSelect: (id: string) => void;
   onAddClick: () => void;
+  language?: AppLanguage;
 }
 
 export default function RigList({
@@ -16,13 +18,14 @@ export default function RigList({
   loading,
   onSelect,
   onAddClick,
+  language = "vi",
 }: RigListProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-town-border/30">
         <div>
-          <h2 className="text-sm font-bold text-town-text">Repositories</h2>
+          <h2 className="text-sm font-bold text-town-text">{t(language, "repositories")}</h2>
           <p className="text-[11px] text-town-text-faint mt-0.5">
             {rigs.length} rig{rigs.length !== 1 ? "s" : ""}
           </p>
@@ -30,7 +33,7 @@ export default function RigList({
         <button
           onClick={onAddClick}
           className="w-8 h-8 flex items-center justify-center rounded-lg bg-gradient-accent text-white shadow-glow-sm hover:shadow-glow-md active:scale-95 transition-all duration-200"
-          title="Add Rig (Ctrl+N)"
+          title={t(language, "add_rig")}
         >
           <svg
             width="14"
@@ -72,9 +75,9 @@ export default function RigList({
                 <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
               </svg>
             </div>
-            <p className="text-sm text-town-text-muted mb-1">No rigs yet</p>
+            <p className="text-sm text-town-text-muted mb-1">{t(language, "no_rigs_yet")}</p>
             <p className="text-xs text-town-text-faint">
-              Add a git repository to get started
+              {t(language, "add_git_repo")}
             </p>
           </div>
         ) : (
