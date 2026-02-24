@@ -23,7 +23,7 @@ import { useHooks } from "./hooks/useHooks";
 import { useHandoffs } from "./hooks/useHandoffs";
 import { useActors } from "./hooks/useActors";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
-import { TaskItem, executeTask } from "./lib/tauri";
+import { TaskItem, executeTask, ingestAIBrief } from "./lib/tauri";
 import { AppLanguage, t } from "./lib/i18n";
 
 export default function App() {
@@ -71,6 +71,18 @@ export default function App() {
   const [showTaskCreate, setShowTaskCreate] = useState(false);
   const [executeTarget, setExecuteTarget] = useState<TaskItem | null>(null);
   const language: AppLanguage = settings?.language ?? "en";
+
+  const fallbackSplitBrief = (brief: string): string[] => {
+    const lines = brief
+      .split(/\r?\n/)
+      .map((line) => line.replace(/^[-*\d.\s]+/, "").trim())
+      .filter(Boolean);
+    if (lines.length > 1) return lines;
+    return brief
+      .split(/[.;\n]/)
+      .map((line) => line.replace(/^[-*\d.\s]+/, "").trim())
+      .filter((line) => line.length > 3);
+  };
 
   // Plumb global hotkeys based on current page
   useGlobalShortcuts(
@@ -308,6 +320,26 @@ export default function App() {
                 onExecute={(task) => setExecuteTarget(task)}
                 onSling={async (taskId, hookId) => {
                   await slingNow(hookId, taskId);
+                }}
+                onAiIntake={async (brief) => {
+                  if (!selectedRig) return { created: 0, ignoredLines: 0 };
+                  try {
+                    const result = await ingestAIBrief(selectedRig.id, brief);
+                    await refreshTasks();
+                    return {
+                      created: result.created.length,
+                      ignoredLines: result.ignored_lines,
+                    };
+                  } catch {
+                    const items = fallbackSplitBrief(brief);
+                    let created = 0;
+                    for (const item of items) {
+                      await addTask(item, `Generated from AI brief: ${item}`, [], "medium");
+                      created += 1;
+                    }
+                    await refreshTasks();
+                    return { created, ignoredLines: 0 };
+                  }
                 }}
               />
             </div>
