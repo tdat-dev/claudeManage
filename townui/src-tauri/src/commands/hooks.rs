@@ -6,6 +6,55 @@ use crate::models::hook::{Hook, HookStatus};
 use crate::models::task::{TaskStatus, TaskUpdateRequest};
 use crate::state::AppState;
 
+const DONE_CHECKPOINT_TYPE: &str = "hook_done_checkpoint_v1";
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum DoneCheckpointPhase {
+    Started,
+    TaskUpdated,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct DoneCheckpoint {
+    checkpoint_type: String,
+    phase: DoneCheckpointPhase,
+    work_item_id: Option<String>,
+    outcome: Option<String>,
+    previous_state_blob: Option<String>,
+    updated_at: String,
+}
+
+fn parse_done_checkpoint(state_blob: &Option<String>) -> Option<DoneCheckpoint> {
+    let raw = state_blob.as_ref()?;
+    let checkpoint: DoneCheckpoint = serde_json::from_str(raw).ok()?;
+    if checkpoint.checkpoint_type == DONE_CHECKPOINT_TYPE {
+        Some(checkpoint)
+    } else {
+        None
+    }
+}
+
+fn persist_done_checkpoint(
+    hook: &mut Hook,
+    phase: DoneCheckpointPhase,
+    work_item_id: Option<String>,
+    outcome: Option<String>,
+    previous_state_blob: Option<String>,
+) {
+    let checkpoint = DoneCheckpoint {
+        checkpoint_type: DONE_CHECKPOINT_TYPE.to_string(),
+        phase,
+        work_item_id,
+        outcome,
+        previous_state_blob,
+        updated_at: chrono::Utc::now().to_rfc3339(),
+    };
+    if let Ok(serialized) = serde_json::to_string(&checkpoint) {
+        hook.state_blob = Some(serialized);
+    }
+}
+
 const HOOK_LEASE_TTL_MINUTES: i64 = 45;
 
 #[derive(Debug, Clone, Serialize)]
@@ -432,15 +481,15 @@ pub fn sling(
 
 #[tauri::command]
 pub fn done(hook_id: String, outcome: Option<String>, state: State<AppState>) -> Result<Hook, String> {
-    let mut hooks = state.hooks.lock().unwrap();
-    let hook = hooks
-        .iter_mut()
-        .find(|h| h.hook_id == hook_id)
-        .ok_or_else(|| "Hook not found".to_string())?;
+    let (updated, work_item_id, effective_outcome) = {
+        let mut hooks = state.hooks.lock().unwrap();
+        let hook = hooks
+            .iter_mut()
+            .find(|h| h.hook_id == hook_id)
+            .ok_or_else(|| "Hook not found".to_string())?;
 
     let work_item_id = hook.current_work_id.clone();
     hook.status = HookStatus::Done;
-    clear_hook_lease(hook);
     hook.last_heartbeat = chrono::Utc::now().to_rfc3339();
     let updated = hook.clone();
     state.save_hooks(&hooks);
@@ -463,10 +512,29 @@ pub fn done(hook_id: String, outcome: Option<String>, state: State<AppState>) ->
                 convoy_id: None,
                 hook_id: Some(Some(updated.hook_id.clone())),
                 blocked_reason: Some(None),
-                outcome: Some(outcome.clone()),
+                outcome: Some(effective_outcome.clone()),
             });
             state.save_tasks(&tasks);
         }
+    }
+
+    {
+        let mut hooks = state.hooks.lock().unwrap();
+        if let Some(h) = hooks.iter_mut().find(|h| h.hook_id == updated.hook_id) {
+            let previous_blob = parse_done_checkpoint(&h.state_blob)
+                .and_then(|cp| cp.previous_state_blob)
+                .or_else(|| h.state_blob.clone());
+            persist_done_checkpoint(
+                h,
+                DoneCheckpointPhase::TaskUpdated,
+                work_item_id.clone(),
+                effective_outcome.clone(),
+                previous_blob,
+            );
+            h.status = HookStatus::Done;
+            h.last_heartbeat = chrono::Utc::now().to_rfc3339();
+        }
+        state.save_hooks(&hooks);
     }
 
     // then reset current work (hook goes idle after done)
@@ -488,7 +556,7 @@ pub fn done(hook_id: String, outcome: Option<String>, state: State<AppState>) ->
     let payload = serde_json::json!({
         "hook_id": final_hook.hook_id,
         "work_item_id": work_item_id,
-        "outcome": outcome,
+        "outcome": effective_outcome,
     })
     .to_string();
     state.append_audit_event(&AuditEvent::new(
