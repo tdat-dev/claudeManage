@@ -62,7 +62,7 @@ export default function SettingsPage({
   const language = (current?.language ?? "en") as "en" | "vi";
   const cliKeys = Object.keys(current?.cli_paths ?? {});
   const selectedCliValue = selectedCliKey
-    ? current?.cli_paths?.[selectedCliKey] ?? ""
+    ? (current?.cli_paths?.[selectedCliKey] ?? "")
     : "";
 
   useEffect(() => {
@@ -282,7 +282,7 @@ export default function SettingsPage({
                       onFocus={() => setEditingCliKey(selectedCliKey)}
                       onBlur={() =>
                         setEditingCliKey((prev) =>
-                          prev === selectedCliKey ? null : prev
+                          prev === selectedCliKey ? null : prev,
                         )
                       }
                       title={selectedCliValue}
@@ -539,7 +539,7 @@ export default function SettingsPage({
             </p>
           </section>
 
-          {/* AI Inbox Bridge */}          
+          {/* AI Inbox Bridge */}
           <section className="glass-card p-5 space-y-4 border border-town-accent/20">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-md bg-town-accent/10 flex items-center justify-center">
@@ -567,7 +567,9 @@ export default function SettingsPage({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-town-text-faint block mb-1">Bind address</label>
+                <label className="text-xs text-town-text-faint block mb-1">
+                  Bind address
+                </label>
                 <input
                   type="text"
                   value={aiBindAddr}
@@ -577,7 +579,9 @@ export default function SettingsPage({
                 />
               </div>
               <div>
-                <label className="text-xs text-town-text-faint block mb-1">Token (optional)</label>
+                <label className="text-xs text-town-text-faint block mb-1">
+                  Token (optional)
+                </label>
                 <input
                   type="text"
                   value={aiToken}
@@ -608,7 +612,9 @@ export default function SettingsPage({
               )}
               <span
                 className={`text-xs font-medium ${
-                  aiInbox?.running ? "text-town-success" : "text-town-text-faint"
+                  aiInbox?.running
+                    ? "text-town-success"
+                    : "text-town-text-faint"
                 }`}
               >
                 {aiInbox?.running ? `Running on ${bridgeUrl}` : "Stopped"}
@@ -619,32 +625,47 @@ export default function SettingsPage({
               <div className="grid grid-cols-3 gap-2 text-xs">
                 <div className="rounded-lg bg-town-surface-hover/50 p-2">
                   <div className="text-town-text-faint">Requests</div>
-                  <div className="font-mono text-town-text">{aiInbox.requests_total}</div>
+                  <div className="font-mono text-town-text">
+                    {aiInbox.requests_total}
+                  </div>
                 </div>
                 <div className="rounded-lg bg-town-surface-hover/50 p-2">
                   <div className="text-town-text-faint">Accepted</div>
-                  <div className="font-mono text-town-success">{aiInbox.accepted_total}</div>
+                  <div className="font-mono text-town-success">
+                    {aiInbox.accepted_total}
+                  </div>
                 </div>
                 <div className="rounded-lg bg-town-surface-hover/50 p-2">
                   <div className="text-town-text-faint">Rejected</div>
-                  <div className="font-mono text-town-danger">{aiInbox.rejected_total}</div>
+                  <div className="font-mono text-town-danger">
+                    {aiInbox.rejected_total}
+                  </div>
                 </div>
               </div>
             )}
 
             <div className="rounded-lg bg-town-bg/40 border border-town-border/30 p-3">
-              <div className="text-[11px] text-town-text-faint mb-1">Example payload</div>
+              <div className="text-[11px] text-town-text-faint mb-1">
+                Example payload
+              </div>
               <pre className="text-[11px] font-mono text-town-text-muted whitespace-pre-wrap break-all">
-{`curl -X POST ${bridgeUrl}/api/ai/tasks \\
-  -H "Content-Type: application/json"${aiToken.trim() ? ` \\
-  -H "X-TownUI-Token: ${aiToken.trim()}"` : ""} \\
+                {`curl -X POST ${bridgeUrl}/api/ai/tasks \\
+  -H "Content-Type: application/json"${
+    aiToken.trim()
+      ? ` \\
+  -H "X-TownUI-Token: ${aiToken.trim()}"`
+      : ""
+  } \\
   -d '{"rig_id":"<RIG_ID>","title":"Fix login timeout","description":"Investigate auth refresh flow","priority":"high","tags":["backend","auth"]}'`}
               </pre>
               <p className="text-[10px] text-town-text-faint mt-2">
-                Also supports batch: {"{ rig_id, tasks: [...] }"} and brief mode: {"{ rig_id, brief }"}.
+                Also supports batch: {"{ rig_id, tasks: [...] }"} and brief
+                mode: {"{ rig_id, brief }"}.
               </p>
               {aiInbox?.last_error && (
-                <p className="text-[10px] text-town-danger mt-2">Last error: {aiInbox.last_error}</p>
+                <p className="text-[10px] text-town-danger mt-2">
+                  Last error: {aiInbox.last_error}
+                </p>
               )}
             </div>
           </section>
@@ -862,7 +883,9 @@ export default function SettingsPage({
                 onClick={() =>
                   setDraft({
                     ...current,
-                    startup_priming_enabled: !(current.startup_priming_enabled ?? true),
+                    startup_priming_enabled: !(
+                      current.startup_priming_enabled ?? true
+                    ),
                   })
                 }
                 className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
@@ -873,7 +896,9 @@ export default function SettingsPage({
               >
                 <span
                   className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
-                    (current.startup_priming_enabled ?? true) ? "translate-x-4" : "translate-x-0"
+                    (current.startup_priming_enabled ?? true)
+                      ? "translate-x-4"
+                      : "translate-x-0"
                   }`}
                 />
               </button>
@@ -918,7 +943,8 @@ export default function SettingsPage({
                 className="input-base w-full resize-none font-mono text-[11px]"
               />
               <p className="text-[10px] text-town-text-faint">
-                Supports: {"{{"}rig.name{"}}"}, {"{{"}rig.path{"}}"}, {"{{"}crew.name{"}}"}, {"{{"}task.title{"}}"}
+                Supports: {"{{"}rig.name{"}}"}, {"{{"}rig.path{"}}"}, {"{{"}
+                crew.name{"}}"}, {"{{"}task.title{"}}"}
               </p>
             </div>
           </section>
@@ -930,7 +956,9 @@ export default function SettingsPage({
                 <span className="text-sm">🚀</span>
               </div>
               <div>
-                <h3 className="section-title !mb-0">Propulsion &amp; Witness</h3>
+                <h3 className="section-title !mb-0">
+                  Propulsion &amp; Witness
+                </h3>
                 <p className="text-[11px] text-town-text-faint mt-0.5">
                   Auto-push idle crews and manage polecats
                 </p>
@@ -957,7 +985,9 @@ export default function SettingsPage({
               >
                 <span
                   className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
-                    (current.propulsion_enabled ?? false) ? "translate-x-4" : "translate-x-0"
+                    (current.propulsion_enabled ?? false)
+                      ? "translate-x-4"
+                      : "translate-x-0"
                   }`}
                 />
               </button>
@@ -977,7 +1007,8 @@ export default function SettingsPage({
                 onChange={(e) =>
                   setDraft({
                     ...current,
-                    propulsion_interval_seconds: parseInt(e.target.value, 10) || 60,
+                    propulsion_interval_seconds:
+                      parseInt(e.target.value, 10) || 60,
                   })
                 }
                 className="input-base w-32"
@@ -1004,7 +1035,9 @@ export default function SettingsPage({
               >
                 <span
                   className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
-                    (current.witness_auto_spawn ?? false) ? "translate-x-4" : "translate-x-0"
+                    (current.witness_auto_spawn ?? false)
+                      ? "translate-x-4"
+                      : "translate-x-0"
                   }`}
                 />
               </button>
@@ -1044,7 +1077,8 @@ export default function SettingsPage({
                 onChange={(e) =>
                   setDraft({
                     ...current,
-                    polecat_nudge_after_seconds: parseInt(e.target.value, 10) || 60,
+                    polecat_nudge_after_seconds:
+                      parseInt(e.target.value, 10) || 60,
                   })
                 }
                 className="input-base w-32"

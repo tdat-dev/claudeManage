@@ -53,9 +53,15 @@ const defaultStatus = {
 };
 
 export default function TerminalTabs({ rigId }: TerminalTabsProps) {
-  const { workers, loading, spawn, stop, remove, getLogs, error: workersError } = useWorkers(
-    rigId || null,
-  );
+  const {
+    workers,
+    loading,
+    spawn,
+    stop,
+    remove,
+    getLogs,
+    error: workersError,
+  } = useWorkers(rigId || null);
   const { crews } = useCrews(rigId || null);
   const { hooks, done } = useHooks(rigId || null);
   const { addHandoff } = useHandoffs(rigId || null);
@@ -333,10 +339,11 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
               <button
                 key={n}
                 onClick={() => setColumns(n)}
-                className={`p-1.5 rounded-md transition-all duration-200 ${columns === n
-                  ? "bg-town-accent/15 text-town-accent shadow-sm"
-                  : "text-town-text-muted hover:text-town-text hover:bg-town-surface-hover"
-                  }`}
+                className={`p-1.5 rounded-md transition-all duration-200 ${
+                  columns === n
+                    ? "bg-town-accent/15 text-town-accent shadow-sm"
+                    : "text-town-text-muted hover:text-town-text hover:bg-town-surface-hover"
+                }`}
                 title={`${n} column${n > 1 ? "s" : ""}`}
               >
                 {colIcons[i]}
@@ -346,10 +353,11 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
 
           <button
             onClick={() => setShowSpawn(!showSpawn)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${showSpawn
-              ? "bg-town-surface border border-town-border text-town-text-muted"
-              : "btn-primary"
-              }`}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+              showSpawn
+                ? "bg-town-surface border border-town-border text-town-text-muted"
+                : "btn-primary"
+            }`}
           >
             <svg
               width="14"
@@ -585,12 +593,13 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
               return (
                 <div
                   key={w.id}
-                  className={`group flex h-full min-h-0 flex-col rounded-xl overflow-hidden border transition-all duration-300 ${w.status === "running"
-                    ? "border-town-success/25 shadow-[0_0_20px_-6px_rgba(16,185,129,0.15)]"
-                    : w.status === "failed"
-                      ? "border-town-danger/25"
-                      : "border-town-border/60 hover:border-town-border"
-                    } bg-town-bg`}
+                  className={`group flex h-full min-h-0 flex-col rounded-xl overflow-hidden border transition-all duration-300 ${
+                    w.status === "running"
+                      ? "border-town-success/25 shadow-[0_0_20px_-6px_rgba(16,185,129,0.15)]"
+                      : w.status === "failed"
+                        ? "border-town-danger/25"
+                        : "border-town-border/60 hover:border-town-border"
+                  } bg-town-bg`}
                 >
                   {/* Terminal header — faux title bar */}
                   <div className="flex items-center justify-between px-3 py-2 bg-town-surface/80 border-b border-town-border/50 shrink-0">

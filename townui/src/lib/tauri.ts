@@ -62,7 +62,12 @@ export async function createCrew(
   baseBranch: string,
   pushToRemote: boolean = false,
 ): Promise<CrewInfo> {
-  return invoke<CrewInfo>("create_crew", { rigId, name, baseBranch, pushToRemote });
+  return invoke<CrewInfo>("create_crew", {
+    rigId,
+    name,
+    baseBranch,
+    pushToRemote,
+  });
 }
 
 export async function getCrew(id: string): Promise<CrewInfo> {
@@ -1379,11 +1384,17 @@ export async function spawnPolecat(
 
 // ── A/B testing ──
 
-export async function setRunModelTag(runId: string, modelTag: string): Promise<RunInfo> {
+export async function setRunModelTag(
+  runId: string,
+  modelTag: string,
+): Promise<RunInfo> {
   return invoke<RunInfo>("set_run_model_tag", { runId, modelTag });
 }
 
-export async function setRunQualitySignal(runId: string, qualitySignal: number): Promise<RunInfo> {
+export async function setRunQualitySignal(
+  runId: string,
+  qualitySignal: number,
+): Promise<RunInfo> {
   return invoke<RunInfo>("set_run_quality_signal", { runId, qualitySignal });
 }
 
@@ -1393,7 +1404,12 @@ export async function listRunStats(rigId?: string): Promise<ModelStats[]> {
 
 // ── Dog Pool ──
 
-export type DogRole = "boot" | "health_check" | "log_rotation" | "orphan_cleanup" | "hook_repair";
+export type DogRole =
+  | "boot"
+  | "health_check"
+  | "log_rotation"
+  | "orphan_cleanup"
+  | "hook_repair";
 export type DogStatus = "pending" | "running" | "completed" | "failed";
 
 export interface DogInfo {
@@ -1424,7 +1440,10 @@ export async function getDogPoolStatus(): Promise<DogPoolStatus> {
   return invoke<DogPoolStatus>("get_dog_pool_status");
 }
 
-export async function spawnDog(role: DogRole, rigId?: string): Promise<DogInfo> {
+export async function spawnDog(
+  role: DogRole,
+  rigId?: string,
+): Promise<DogInfo> {
   return invoke<DogInfo>("spawn_dog", { role, rigId: rigId ?? null });
 }
 

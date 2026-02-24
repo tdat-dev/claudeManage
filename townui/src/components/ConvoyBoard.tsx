@@ -220,11 +220,12 @@ export default function ConvoyBoard({
                       </span>
                     )}
                     {/* Merge strategy chip */}
-                    {convoy.merge_strategy && convoy.merge_strategy !== "direct" && (
-                      <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-purple-500/20 text-purple-400">
-                        ⬡ {convoy.merge_strategy}
-                      </span>
-                    )}
+                    {convoy.merge_strategy &&
+                      convoy.merge_strategy !== "direct" && (
+                        <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-purple-500/20 text-purple-400">
+                          ⬡ {convoy.merge_strategy}
+                        </span>
+                      )}
                   </div>
                   {convoy.description && (
                     <p className="text-xs text-town-text-muted mt-1 line-clamp-2">
