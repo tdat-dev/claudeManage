@@ -23,7 +23,7 @@ import { useHooks } from "./hooks/useHooks";
 import { useHandoffs } from "./hooks/useHandoffs";
 import { useActors } from "./hooks/useActors";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
-import { TaskItem, executeTask, getSettings, listCrews } from "./lib/tauri";
+import { TaskItem, executeTask, ingestAIBrief } from "./lib/tauri";
 import { AppLanguage, t } from "./lib/i18n";
 
 export default function App() {
@@ -74,35 +74,6 @@ export default function App() {
   const [showTaskCreate, setShowTaskCreate] = useState(false);
   const [executeTarget, setExecuteTarget] = useState<TaskItem | null>(null);
   const language: AppLanguage = settings?.language ?? "en";
-
-  const quickStartTask = async (task: TaskItem) => {
-    try {
-      const crews = await listCrews(task.rig_id);
-      if (crews.length === 0) {
-        setExecuteTarget(task);
-        return;
-      }
-
-      let agentType = "";
-      let templateName = "implement_feature";
-      try {
-        const appSettings = await getSettings();
-        if (appSettings.default_cli?.trim()) {
-          agentType = appSettings.default_cli;
-        }
-        if (appSettings.default_template?.trim()) {
-          templateName = appSettings.default_template;
-        }
-      } catch {
-        // Fall back to backend defaults.
-      }
-
-      await executeTask(task.id, crews[0].id, agentType, templateName);
-      await editTask(task.id, { status: "in_progress" });
-    } catch (e) {
-      alert(`Start failed: ${String(e)}`);
-    }
-  };
 
   // Plumb global hotkeys based on current page
   useGlobalShortcuts(
@@ -350,6 +321,31 @@ export default function App() {
                 onSling={async (taskId, hookId) => {
                   await slingNow(hookId, taskId);
                 }}
+                onAiIntake={async (brief) => {
+                  if (!selectedRig) return { created: 0, ignoredLines: 0 };
+                  try {
+                    const result = await ingestAIBrief(selectedRig.id, brief);
+                    await refreshTasks();
+                    return {
+                      created: result.created.length,
+                      ignoredLines: result.ignored_lines,
+                    };
+                  } catch {
+                    const items = fallbackSplitBrief(brief);
+                    let created = 0;
+                    for (const item of items) {
+                      await addTask(
+                        item,
+                        `Generated from AI brief: ${item}`,
+                        [],
+                        "medium",
+                      );
+                      created += 1;
+                    }
+                    await refreshTasks();
+                    return { created, ignoredLines: 0 };
+                  }
+                }}
               />
             </div>
           </div>
@@ -415,7 +411,9 @@ export default function App() {
           <div className="p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold">{t(language, "audit_title")}</h2>
+                <h2 className="text-lg font-bold">
+                  {t(language, "audit_title")}
+                </h2>
                 <p className="text-xs text-town-text-muted mt-0.5">
                   {t(language, "audit_timeline")} — {selectedRig.name}
                 </p>

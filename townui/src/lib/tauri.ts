@@ -174,6 +174,18 @@ export async function deleteTask(id: string): Promise<void> {
   return invoke<void>("delete_task", { id });
 }
 
+export interface IngestAiBriefResult {
+  created: TaskItem[];
+  ignored_lines: number;
+}
+
+export async function ingestAIBrief(
+  rigId: string,
+  brief: string,
+): Promise<IngestAiBriefResult> {
+  return invoke<IngestAiBriefResult>("ingest_ai_brief", { rigId, brief });
+}
+
 // ── Hook types ──
 
 export type HookStatus = "idle" | "assigned" | "running" | "done";

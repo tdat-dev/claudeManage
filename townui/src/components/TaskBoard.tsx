@@ -19,6 +19,9 @@ interface TaskBoardProps {
   onExecute: (task: TaskItem) => void;
   onQuickStart?: (task: TaskItem) => Promise<void> | void;
   onSling?: (taskId: string, hookId: string) => Promise<void>;
+  onAiIntake?: (
+    brief: string,
+  ) => Promise<{ created: number; ignoredLines: number }>;
 }
 
 // ── Column definitions ──
@@ -174,6 +177,7 @@ export default function TaskBoard({
   onExecute,
   onQuickStart,
   onSling,
+  onAiIntake,
 }: TaskBoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTargetCol, setDropTargetCol] = useState<string | null>(null);
@@ -184,6 +188,10 @@ export default function TaskBoard({
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
   const [quickAddCol, setQuickAddCol] = useState<string | null>(null);
   const [quickAddTitle, setQuickAddTitle] = useState("");
+  const [aiBrief, setAiBrief] = useState("");
+  const [aiIntaking, setAiIntaking] = useState(false);
+  const [aiIntakeError, setAiIntakeError] = useState<string | null>(null);
+  const [aiIntakeSummary, setAiIntakeSummary] = useState<string | null>(null);
   const quickAddRef = useRef<HTMLInputElement>(null);
 
   // Sync selected task with latest data
@@ -442,6 +450,62 @@ export default function TaskBoard({
               })}
             </div>
           </div>
+        </div>
+
+        {/* AI Quick Intake */}
+        <div className="glass-card p-3">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h3 className="text-xs font-semibold text-town-text">
+                AI Quick Intake
+              </h3>
+              <p className="text-[11px] text-town-text-faint mt-0.5">
+                Paste brief to split into tasks automatically.
+              </p>
+            </div>
+            <button
+              disabled={!onAiIntake || aiIntaking || !aiBrief.trim()}
+              onClick={async () => {
+                if (!onAiIntake || !aiBrief.trim()) return;
+                try {
+                  setAiIntaking(true);
+                  setAiIntakeError(null);
+                  setAiIntakeSummary(null);
+                  const result = await onAiIntake(aiBrief.trim());
+                  setAiIntakeSummary(
+                    `Created ${result.created} task(s)${
+                      result.ignoredLines > 0
+                        ? `, ignored ${result.ignoredLines} line(s)`
+                        : ""
+                    }.`,
+                  );
+                  setAiBrief("");
+                } catch (e) {
+                  setAiIntakeError(String(e));
+                } finally {
+                  setAiIntaking(false);
+                }
+              }}
+              className="btn-primary !py-1.5 !px-3 !text-xs disabled:opacity-60"
+            >
+              {aiIntaking ? "Ingesting..." : "Ingest Brief"}
+            </button>
+          </div>
+          <textarea
+            value={aiBrief}
+            onChange={(e) => setAiBrief(e.target.value)}
+            placeholder="- [P1] Add auth guard to API routes #backend&#10;- Create migration for user profile fields #db&#10;- Update onboarding screen copy #frontend"
+            rows={4}
+            className="input-base w-full !text-xs !py-2 resize-y"
+          />
+          {aiIntakeSummary && (
+            <p className="text-[11px] text-emerald-300 mt-2">{aiIntakeSummary}</p>
+          )}
+          {aiIntakeError && (
+            <p className="text-[11px] text-rose-300 mt-2">
+              Intake failed: {aiIntakeError}
+            </p>
+          )}
         </div>
       </div>
 
