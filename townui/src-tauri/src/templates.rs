@@ -70,6 +70,32 @@ Please refactor the code as described. Ensure behavior is preserved — no funct
 Keep the code clean and well-organized."#.to_string(),
             is_builtin: true,
         },
+        Template {
+            name: "convoy_execution".to_string(),
+            description: "Execute a convoy task with coordination and safe landing".to_string(),
+            content: r#"You are executing a convoy work item in "{{rig.name}}".
+You are on branch "{{crew.branch}}" in repo "{{repo.root}}".
+
+Task: {{task.title}}
+
+Task details:
+{{task.description}}
+
+Execution protocol:
+1. Clarify scope and identify dependencies affected by this task.
+2. Implement only the slice required for this work item.
+3. Keep interfaces and contracts stable for other convoy tasks.
+4. Add or update tests to protect behavior and integration points.
+5. Summarize what changed, what is intentionally deferred, and any handoff notes for the next convoy item.
+
+Output format:
+- Scope completed
+- Files changed
+- Tests run
+- Risks / blockers
+- Suggested next convoy step"#.to_string(),
+            is_builtin: true,
+        },
         // ── Bigtech-grade templates ──────────────────────────────────
         Template {
             name: "code_review".to_string(),

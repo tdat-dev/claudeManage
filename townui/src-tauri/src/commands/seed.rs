@@ -576,7 +576,7 @@ pub fn get_seed_info() -> SeedInfo {
         workflow_template_names: templates.iter().map(|t| t.name.clone()).collect(),
         formula_count: formulas.len(),
         formula_names: formulas.iter().map(|t| t.name.clone()).collect(),
-        prompt_template_count: 14, // built-in prompts from templates.rs
+        prompt_template_count: crate::templates::get_builtin_templates().len(),
     }
 }
 
