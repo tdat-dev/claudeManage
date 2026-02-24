@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::models::audit::{AuditEvent, AuditEventType};
@@ -6,6 +7,38 @@ use crate::models::workflow::{
     StepState, StepStatus, WorkflowInstance, WorkflowStatus, WorkflowStep, WorkflowTemplate,
 };
 use crate::state::AppState;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProtomoleculeStep {
+    pub step_id: String,
+    pub title: String,
+    pub description: String,
+    pub agent_type: String,
+    pub dependencies: Vec<String>,
+    pub command_resolved: String,
+    pub acceptance_criteria: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Protomolecule {
+    pub protomolecule_id: String,
+    pub template_id: String,
+    pub template_name: String,
+    pub variables_resolved: HashMap<String, String>,
+    pub steps: Vec<ProtomoleculeStep>,
+    pub cooked_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WispPreview {
+    pub wisp_id: String,
+    pub template_id: String,
+    pub template_name: String,
+    pub rig_id: String,
+    pub variables_resolved: HashMap<String, String>,
+    pub ready_steps: Vec<String>,
+    pub created_at: String,
+}
 
 // ── Workflow Template (Formula) CRUD ──
 
@@ -104,6 +137,119 @@ pub fn instantiate_workflow(
     ));
 
     Ok(instance)
+}
+
+/// Gas Town alias: cook formula into protomolecule.
+#[tauri::command]
+pub fn cook_formula(
+    template_id: String,
+    variables: HashMap<String, String>,
+    state: State<AppState>,
+) -> Result<Protomolecule, String> {
+    let templates = state.workflow_templates.lock().unwrap();
+    let template = templates
+        .iter()
+        .find(|t| t.template_id == template_id)
+        .ok_or_else(|| "Template not found".to_string())?;
+
+    let mut steps = Vec::new();
+    for step in &template.steps {
+        let missing = crate::templates::validate_variables(&step.command_template, &variables);
+        if !missing.is_empty() {
+            return Err(format!(
+                "Step '{}' missing variables: {}",
+                step.step_id,
+                missing.join(", ")
+            ));
+        }
+        let command_resolved = crate::templates::render_template(&step.command_template, &variables);
+        steps.push(ProtomoleculeStep {
+            step_id: step.step_id.clone(),
+            title: step.title.clone(),
+            description: step.description.clone(),
+            agent_type: step.agent_type.clone(),
+            dependencies: step.dependencies.clone(),
+            command_resolved,
+            acceptance_criteria: step.acceptance_criteria.clone(),
+        });
+    }
+
+    Ok(Protomolecule {
+        protomolecule_id: uuid::Uuid::new_v4().to_string(),
+        template_id: template.template_id.clone(),
+        template_name: template.name.clone(),
+        variables_resolved: variables,
+        steps,
+        cooked_at: chrono::Utc::now().to_rfc3339(),
+    })
+}
+
+/// Gas Town alias: pour protomolecule into a persisted molecule instance.
+#[tauri::command]
+pub fn pour_protomolecule(
+    protomolecule: Protomolecule,
+    rig_id: String,
+    convoy_id: Option<String>,
+    state: State<AppState>,
+) -> Result<WorkflowInstance, String> {
+    let templates = state.workflow_templates.lock().unwrap();
+    let template = templates
+        .iter()
+        .find(|t| t.template_id == protomolecule.template_id)
+        .ok_or_else(|| "Template not found for protomolecule".to_string())?;
+    let instance = WorkflowInstance::new(
+        template,
+        rig_id.clone(),
+        convoy_id,
+        protomolecule.variables_resolved.clone(),
+    );
+    drop(templates);
+
+    let mut instances = state.workflow_instances.lock().unwrap();
+    instances.push(instance.clone());
+    state.save_workflow_instances(&instances);
+
+    state.append_audit_event(&AuditEvent::new(
+        rig_id,
+        None,
+        Some(instance.instance_id.clone()),
+        AuditEventType::WorkflowInstantiated,
+        serde_json::json!({
+            "template_name": &instance.template_name,
+            "instance_id": &instance.instance_id,
+            "source": "protomolecule",
+            "protomolecule_id": &protomolecule.protomolecule_id,
+        }).to_string(),
+    ));
+
+    Ok(instance)
+}
+
+/// Gas Town alias: lightweight ephemeral workflow (not persisted).
+#[tauri::command]
+pub fn create_wisp_preview(
+    template_id: String,
+    rig_id: String,
+    variables: HashMap<String, String>,
+    state: State<AppState>,
+) -> Result<WispPreview, String> {
+    let templates = state.workflow_templates.lock().unwrap();
+    let template = templates
+        .iter()
+        .find(|t| t.template_id == template_id)
+        .ok_or_else(|| "Template not found".to_string())?;
+    let instance = WorkflowInstance::new(template, rig_id.clone(), None, variables.clone());
+    let ready_steps = instance.ready_steps(template);
+
+    Ok(WispPreview {
+        wisp_id: uuid::Uuid::new_v4().to_string(),
+        template_id: template.template_id.clone(),
+        template_name: template.name.clone(),
+        rig_id,
+        variables_resolved: variables,
+        ready_steps,
+        created_at: chrono::Utc::now().to_rfc3339(),
+    })
 }
 
 #[tauri::command]

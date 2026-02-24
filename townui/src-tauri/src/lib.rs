@@ -47,6 +47,10 @@ pub fn run() {
             commands::tasks::create_task,
             commands::tasks::update_task,
             commands::tasks::delete_task,
+            commands::ai_inbox::get_ai_inbox_status,
+            commands::ai_inbox::start_ai_inbox,
+            commands::ai_inbox::stop_ai_inbox,
+            commands::ai_inbox::ingest_ai_brief,
             // Hooks
             commands::hooks::list_hooks,
             commands::hooks::create_hook,
@@ -54,6 +58,10 @@ pub fn run() {
             commands::hooks::sling,
             commands::hooks::done,
             commands::hooks::resume_hook,
+            commands::hooks::get_rig_queue,
+            // Refinery (per-rig merge queue/integration)
+            commands::refinery::get_refinery_queue,
+            commands::refinery::sync_rig_refinery,
             // Handoffs
             commands::handoffs::list_handoffs,
             commands::handoffs::create_handoff,
@@ -72,6 +80,7 @@ pub fn run() {
             commands::actors::create_actor,
             commands::actors::get_actor,
             commands::actors::delete_actor,
+            commands::actors::get_actor_health,
             // Workers & Runs
             commands::workers::spawn_worker,
             commands::workers::stop_worker,
@@ -99,6 +108,25 @@ pub fn run() {
             // Health
             commands::tasks::get_health_metrics,
             commands::tasks::escalate_stuck_tasks,
+            // Supervisor (Gas Town runtime actions)
+            commands::supervisor::get_supervisor_status,
+            commands::supervisor::start_supervisor,
+            commands::supervisor::stop_supervisor,
+            commands::supervisor::reconcile_queue,
+            commands::supervisor::compact_state,
+            // Operations aliases (Gas Town style)
+            commands::operations::town_install,
+            commands::operations::town_up,
+            commands::operations::town_down,
+            commands::operations::town_shutdown,
+            commands::operations::town_status,
+            commands::operations::get_roles_status,
+            commands::operations::set_roles_status,
+            commands::operations::mayor_plan_objective,
+            commands::operations::deacon_patrol,
+            commands::operations::witness_report,
+            commands::operations::town_doctor,
+            commands::operations::town_fix,
             // Workflows
             commands::workflows::list_workflow_templates,
             commands::workflows::get_workflow_template,
@@ -107,6 +135,9 @@ pub fn run() {
             commands::workflows::list_workflow_instances,
             commands::workflows::get_workflow_instance,
             commands::workflows::instantiate_workflow,
+            commands::workflows::cook_formula,
+            commands::workflows::pour_protomolecule,
+            commands::workflows::create_wisp_preview,
             commands::workflows::start_workflow,
             commands::workflows::get_ready_steps,
             commands::workflows::advance_step,

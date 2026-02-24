@@ -28,6 +28,12 @@ pub enum AuditEventType {
     WorkflowInstantiated,
     WorkflowCompleted,
     WorkflowFailed,
+    SupervisorStarted,
+    SupervisorStopped,
+    QueueReconciled,
+    StateCompacted,
+    RefinerySynced,
+    RefinerySyncFailed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

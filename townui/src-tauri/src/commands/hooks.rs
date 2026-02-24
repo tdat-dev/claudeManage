@@ -1,9 +1,63 @@
+use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use crate::models::audit::{AuditEvent, AuditEventType};
 use crate::models::hook::{Hook, HookStatus};
 use crate::models::task::{TaskStatus, TaskUpdateRequest};
 use crate::state::AppState;
+
+const HOOK_LEASE_TTL_MINUTES: i64 = 45;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct HookQueueItem {
+    pub hook_id: String,
+    pub actor_id: String,
+    pub status: String,
+    pub current_work_id: Option<String>,
+    pub last_heartbeat: String,
+    pub lease_token: Option<String>,
+    pub lease_expires_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RigQueueSnapshot {
+    pub rig_id: String,
+    pub total_hooks: usize,
+    pub hooks_idle: usize,
+    pub hooks_assigned: usize,
+    pub hooks_running: usize,
+    pub pending_work_items: usize,
+    pub items: Vec<HookQueueItem>,
+}
+
+fn parse_utc_rfc3339(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+}
+
+fn hook_has_active_lease(hook: &Hook) -> bool {
+    let Some(expiry) = hook.lease_expires_at.as_deref() else {
+        return false;
+    };
+    let Some(expiry_dt) = parse_utc_rfc3339(expiry) else {
+        return false;
+    };
+    expiry_dt > chrono::Utc::now()
+}
+
+fn issue_hook_lease(hook: &mut Hook) {
+    let now = chrono::Utc::now();
+    hook.lease_token = Some(uuid::Uuid::new_v4().to_string());
+    hook.lease_expires_at = Some(
+        (now + chrono::Duration::minutes(HOOK_LEASE_TTL_MINUTES)).to_rfc3339(),
+    );
+}
+
+fn clear_hook_lease(hook: &mut Hook) {
+    hook.lease_token = None;
+    hook.lease_expires_at = None;
+}
 
 fn resolve_active_crew_id(rig_id: &str, state: &AppState) -> Result<String, String> {
     let crews = state.crews.lock().unwrap();
@@ -46,6 +100,7 @@ fn build_hook_task_prompt(
     hook: &Hook,
     work_item_id: &str,
     crew_id: &str,
+    agent_type: &str,
     state: &AppState,
 ) -> Result<String, String> {
     let (task_title, task_description, acceptance_criteria) = {
@@ -105,6 +160,7 @@ fn build_hook_task_prompt(
 
     let rendered = crate::templates::render_builtin_template(
         &template_name,
+        agent_type,
         &task_title,
         &task_description,
         &rig_name,
@@ -132,7 +188,7 @@ fn auto_execute_hook_work(
 ) -> Result<(String, String, String), String> {
     let crew_id = resolve_active_crew_id(&hook.rig_id, state)?;
     let agent_type = resolve_hook_agent_type(hook, state);
-    let prompt = build_hook_task_prompt(hook, work_item_id, &crew_id, state)?;
+    let prompt = build_hook_task_prompt(hook, work_item_id, &crew_id, &agent_type, state)?;
 
     let worker = super::workers::spawn_worker_for_actor(
         crew_id.clone(),
@@ -184,9 +240,20 @@ fn dispatch_hook_work(
             .find(|h| h.hook_id == hook_id)
             .ok_or_else(|| "Hook not found".to_string())?;
 
+        if (hook.status == HookStatus::Running || hook.status == HookStatus::Assigned)
+            && hook_has_active_lease(hook)
+        {
+            return Err(format!(
+                "Hook {} is currently leased until {}",
+                hook.hook_id,
+                hook.lease_expires_at.clone().unwrap_or_default()
+            ));
+        }
+
         hook.current_work_id = Some(work_item_id.clone());
         hook.state_blob = state_blob.clone();
         hook.status = HookStatus::Assigned;
+        issue_hook_lease(hook);
         hook.last_heartbeat = chrono::Utc::now().to_rfc3339();
         let updated = hook.clone();
         state.save_hooks(&hooks);
@@ -338,6 +405,7 @@ pub fn done(hook_id: String, outcome: Option<String>, state: State<AppState>) ->
 
     let work_item_id = hook.current_work_id.clone();
     hook.status = HookStatus::Done;
+    clear_hook_lease(hook);
     hook.last_heartbeat = chrono::Utc::now().to_rfc3339();
     let updated = hook.clone();
     state.save_hooks(&hooks);
@@ -371,6 +439,7 @@ pub fn done(hook_id: String, outcome: Option<String>, state: State<AppState>) ->
     if let Some(h) = hooks.iter_mut().find(|h| h.hook_id == updated.hook_id) {
         h.current_work_id = None;
         h.state_blob = None;
+        clear_hook_lease(h);
         h.status = HookStatus::Idle;
         h.last_heartbeat = chrono::Utc::now().to_rfc3339();
     }
@@ -406,11 +475,20 @@ pub fn resume_hook(hook_id: String, state: State<AppState>, app: AppHandle) -> R
         .find(|h| h.hook_id == hook_id)
         .ok_or_else(|| "Hook not found".to_string())?;
 
+    if hook.status == HookStatus::Running && hook_has_active_lease(hook) {
+        return Err(format!(
+            "Hook {} already running with active lease until {}",
+            hook.hook_id,
+            hook.lease_expires_at.clone().unwrap_or_default()
+        ));
+    }
+
     hook.status = if hook.current_work_id.is_some() {
         HookStatus::Running
     } else {
         HookStatus::Assigned
     };
+    issue_hook_lease(hook);
     hook.last_heartbeat = chrono::Utc::now().to_rfc3339();
     let updated = hook.clone();
     state.save_hooks(&hooks);
@@ -486,5 +564,50 @@ pub fn resume_hook(hook_id: String, state: State<AppState>, app: AppHandle) -> R
                 .ok_or_else(|| "Hook not found after resume".to_string())
         }
         Err(e) => Err(format!("Resume hook: failed to spawn worker: {}", e)),
+    }
+}
+
+#[tauri::command]
+pub fn get_rig_queue(rig_id: String, state: State<AppState>) -> RigQueueSnapshot {
+    let hooks = state.hooks.lock().unwrap();
+    let rig_hooks: Vec<_> = hooks.iter().filter(|h| h.rig_id == rig_id).cloned().collect();
+    drop(hooks);
+
+    let pending_work_items = rig_hooks
+        .iter()
+        .filter(|h| h.current_work_id.is_some())
+        .count();
+
+    let hooks_idle = rig_hooks.iter().filter(|h| h.status == HookStatus::Idle).count();
+    let hooks_assigned = rig_hooks
+        .iter()
+        .filter(|h| h.status == HookStatus::Assigned)
+        .count();
+    let hooks_running = rig_hooks
+        .iter()
+        .filter(|h| h.status == HookStatus::Running)
+        .count();
+
+    let items = rig_hooks
+        .into_iter()
+        .map(|h| HookQueueItem {
+            hook_id: h.hook_id,
+            actor_id: h.attached_actor_id,
+            status: format!("{:?}", h.status).to_lowercase(),
+            current_work_id: h.current_work_id,
+            last_heartbeat: h.last_heartbeat,
+            lease_token: h.lease_token,
+            lease_expires_at: h.lease_expires_at,
+        })
+        .collect();
+
+    RigQueueSnapshot {
+        rig_id,
+        total_hooks: hooks_idle + hooks_assigned + hooks_running,
+        hooks_idle,
+        hooks_assigned,
+        hooks_running,
+        pending_work_items,
+        items,
     }
 }

@@ -4,6 +4,37 @@ use crate::models::audit::{AuditEvent, AuditEventType};
 use crate::models::convoy::{Convoy, ConvoyStatus};
 use crate::state::AppState;
 
+pub(crate) fn create_convoy_internal(
+    state: &AppState,
+    title: String,
+    description: String,
+    rig_ids: Vec<String>,
+    source: Option<&str>,
+) -> Convoy {
+    let convoy = Convoy::new(title, description, rig_ids.clone());
+    let mut convoys = state.convoys.lock().unwrap();
+    convoys.push(convoy.clone());
+    state.save_convoys(&convoys);
+    drop(convoys);
+
+    let rig_id = rig_ids.first().cloned().unwrap_or_default();
+    state.append_audit_event(&AuditEvent::new(
+        rig_id,
+        None,
+        None,
+        AuditEventType::ConvoyCreated,
+        serde_json::json!({
+            "convoy_id": convoy.convoy_id,
+            "title": convoy.title,
+            "rig_ids": convoy.rig_ids,
+            "source": source.unwrap_or("ui"),
+        })
+        .to_string(),
+    ));
+
+    convoy
+}
+
 #[tauri::command]
 pub fn list_convoys(state: State<AppState>) -> Vec<Convoy> {
     let convoys = state.convoys.lock().unwrap();
@@ -27,27 +58,13 @@ pub fn create_convoy(
     rig_ids: Vec<String>,
     state: State<AppState>,
 ) -> Result<Convoy, String> {
-    let convoy = Convoy::new(title, description, rig_ids.clone());
-    let mut convoys = state.convoys.lock().unwrap();
-    convoys.push(convoy.clone());
-    state.save_convoys(&convoys);
-    drop(convoys);
-
-    let rig_id = rig_ids.first().cloned().unwrap_or_default();
-    state.append_audit_event(&AuditEvent::new(
-        rig_id,
-        None,
-        None,
-        AuditEventType::ConvoyCreated,
-        serde_json::json!({
-            "convoy_id": convoy.convoy_id,
-            "title": convoy.title,
-            "rig_ids": convoy.rig_ids,
-        })
-        .to_string(),
-    ));
-
-    Ok(convoy)
+    Ok(create_convoy_internal(
+        &state,
+        title,
+        description,
+        rig_ids,
+        Some("ui"),
+    ))
 }
 
 #[tauri::command]

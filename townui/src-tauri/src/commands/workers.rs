@@ -1037,6 +1037,7 @@ pub fn execute_task(
     // Render prompt template
     let rendered = crate::templates::render_builtin_template(
         &template_name,
+        &effective_agent_type,
         &task_title,
         &task_description,
         &rig_name,

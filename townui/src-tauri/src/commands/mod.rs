@@ -1,13 +1,17 @@
 pub mod actors;
+pub mod ai_inbox;
 pub mod audit;
 pub mod convoys;
 pub mod crews;
 pub mod handoffs;
 pub mod hooks;
+pub mod operations;
+pub mod refinery;
 pub mod rigs;
 pub mod terminal;
 pub mod seed;
 pub mod settings;
+pub mod supervisor;
 pub mod tasks;
 pub mod templates;
 pub mod workers;

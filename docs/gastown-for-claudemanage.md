@@ -1,5 +1,7 @@
 ﻿# Gas Town Comprehensive Notes for ClaudeManage
 
+Last updated: 2026-02-24  
+
 ## 1. Purpose
 
 This document summarizes Gas Town in a system-design format so we can reuse the ideas for ClaudeManage.
@@ -100,6 +102,8 @@ For ClaudeManage this suggests two tiers:
 
 Work management:
 - convoy
+- convoy ownership flags: `--owned`, `--merge {direct|mr|local}`
+- convoy land
 - sling
 - hook
 - handoff
@@ -118,6 +122,7 @@ Services management:
 
 Diagnostics:
 - status
+- merge queue `--verify`
 - doctor/fix
 
 ## 9. Data Model Blueprint for ClaudeManage
@@ -230,9 +235,23 @@ Control: dedicated refinery queue and bounded concurrency.
 - Separate long-lived workers from short-lived workers.
 - Model every state transition as an event.
 
-## 15. References
+## 15. Release Delta: v0.7.0 (2026-02-16)
+
+- Convoy ownership and merge strategy support added across convoy create/sling/list/status.
+- `gt convoy land` added for owned convoy cleanup and completion.
+- `gt done` now uses checkpoint-based recovery to survive session death mid-completion.
+- Agent factory moved to a data-driven runtime preset registry.
+- New first-class runtime adapters: Gemini CLI and GitHub Copilot CLI.
+- Non-destructive nudge delivery added via queue and wait-idle modes.
+- Submodule support added for worktree operations and refinery merge queue.
+- Dashboard/UI adds activity timeline, mobile responsiveness, toast + escalation actions, and escape-to-close behavior.
+- Witness/patrol adds JSON receipts, orphan molecule cleanup, and dead-polecat IN_PROGRESS bead recovery.
+
+## 16. References
 
 - https://github.com/steveyegge/gastown
+- https://github.com/steveyegge/gastown/releases/tag/v0.7.0
+- https://github.com/steveyegge/gastown/blob/main/CHANGELOG.md
 - https://docs.gastownhall.ai/
 - https://docs.gastownhall.ai/glossary/
 - https://docs.gastownhall.ai/concepts/convoy/

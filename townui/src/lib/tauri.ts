@@ -184,9 +184,31 @@ export interface HookInfo {
   attached_actor_id: string;
   current_work_id: string | null;
   state_blob: string | null;
+  lease_token: string | null;
+  lease_expires_at: string | null;
   status: HookStatus;
   last_heartbeat: string;
   created_at: string;
+}
+
+export interface HookQueueItem {
+  hook_id: string;
+  actor_id: string;
+  status: string;
+  current_work_id: string | null;
+  last_heartbeat: string;
+  lease_token: string | null;
+  lease_expires_at: string | null;
+}
+
+export interface RigQueueSnapshot {
+  rig_id: string;
+  total_hooks: number;
+  hooks_idle: number;
+  hooks_assigned: number;
+  hooks_running: number;
+  pending_work_items: number;
+  items: HookQueueItem[];
 }
 
 export async function listHooks(rigId: string): Promise<HookInfo[]> {
@@ -233,6 +255,10 @@ export async function doneHook(
 
 export async function resumeHook(hookId: string): Promise<HookInfo> {
   return invoke<HookInfo>("resume_hook", { hookId });
+}
+
+export async function getRigQueue(rigId: string): Promise<RigQueueSnapshot> {
+  return invoke<RigQueueSnapshot>("get_rig_queue", { rigId });
 }
 
 // ── Handoff types ──
@@ -372,6 +398,17 @@ export interface ActorInfo {
   created_at: string;
 }
 
+export interface ActorHealth {
+  actor_id: string;
+  rig_id: string;
+  tasks_total: number;
+  tasks_in_progress: number;
+  tasks_blocked: number;
+  hook_status: string | null;
+  last_heartbeat: string | null;
+  has_running_worker: boolean;
+}
+
 export async function listActors(rigId: string): Promise<ActorInfo[]> {
   return invoke<ActorInfo[]>("list_actors", { rigId });
 }
@@ -391,6 +428,10 @@ export async function getActor(actorId: string): Promise<ActorInfo> {
 
 export async function deleteActor(actorId: string): Promise<void> {
   return invoke<void>("delete_actor", { actorId });
+}
+
+export async function getActorHealth(actorId: string): Promise<ActorHealth> {
+  return invoke<ActorHealth>("get_actor_health", { actorId });
 }
 
 export async function executeTask(
@@ -545,6 +586,50 @@ export async function validateCliPath(path: string): Promise<string> {
   return invoke<string>("validate_cli_path", { path });
 }
 
+// ── AI Inbox Bridge ──
+
+export interface AiInboxStatus {
+  running: boolean;
+  bind_addr: string | null;
+  started_at: string | null;
+  requests_total: number;
+  accepted_total: number;
+  rejected_total: number;
+  last_error: string | null;
+}
+
+export async function getAiInboxStatus(): Promise<AiInboxStatus> {
+  return invoke<AiInboxStatus>("get_ai_inbox_status");
+}
+
+export async function startAiInbox(
+  bindAddr?: string,
+  token?: string,
+): Promise<AiInboxStatus> {
+  return invoke<AiInboxStatus>("start_ai_inbox", {
+    bindAddr: bindAddr ?? null,
+    token: token ?? null,
+  });
+}
+
+export async function stopAiInbox(): Promise<AiInboxStatus> {
+  return invoke<AiInboxStatus>("stop_ai_inbox");
+}
+
+export async function ingestAiBrief(
+  rigId: string,
+  brief: string,
+  source?: string,
+  defaultPriority?: TaskPriority,
+): Promise<TaskItem[]> {
+  return invoke<TaskItem[]>("ingest_ai_brief", {
+    rigId,
+    brief,
+    source: source ?? null,
+    defaultPriority: defaultPriority ?? null,
+  });
+}
+
 // ── Audit types ──
 
 export type AuditEventType =
@@ -572,7 +657,13 @@ export type AuditEventType =
   | "convoy_completed"
   | "workflow_instantiated"
   | "workflow_completed"
-  | "workflow_failed";
+  | "workflow_failed"
+  | "supervisor_started"
+  | "supervisor_stopped"
+  | "queue_reconciled"
+  | "state_compacted"
+  | "refinery_synced"
+  | "refinery_sync_failed";
 
 export interface AuditEvent {
   event_id: string;
@@ -625,6 +716,165 @@ export interface HealthMetrics {
   handoffs_pending: number;
 }
 
+export interface SupervisorStatus {
+  running: boolean;
+  started_at: string | null;
+  last_reconcile_at: string | null;
+  last_compact_at: string | null;
+  loop_interval_seconds: number;
+  auto_refinery_sync: boolean;
+  rigs_total: number;
+  hooks_open: number;
+  workers_running: number;
+}
+
+export interface ReconcileItem {
+  rig_id: string;
+  hook_id: string;
+  task_id: string | null;
+  action: string;
+  reason: string;
+}
+
+export interface ReconcileReport {
+  reconciled_at: string;
+  checked_hooks: number;
+  items_changed: number;
+  items: ReconcileItem[];
+}
+
+export interface CompactReport {
+  compacted_at: string;
+  removed_workers: number;
+  removed_runs: number;
+  removed_crews: number;
+}
+
+export interface TownRuntimeStatus {
+  rigs_total: number;
+  tasks_total: number;
+  hooks_open: number;
+  workers_running: number;
+  workers_failed: number;
+  supervisor_running: boolean;
+  supervisor_started_at: string | null;
+  ai_inbox_running: boolean;
+  ai_inbox_bind_addr: string | null;
+  mayor_enabled: boolean;
+  deacon_enabled: boolean;
+  witness_enabled: boolean;
+}
+
+export interface DoctorIssue {
+  code: string;
+  severity: string;
+  message: string;
+  hint: string;
+}
+
+export interface DoctorReport {
+  checked_at: string;
+  rig_scope: string | null;
+  healthy: boolean;
+  issues: DoctorIssue[];
+}
+
+export interface FixReport {
+  fixed_at: string;
+  rig_scope: string | null;
+  supervisor_started: boolean;
+  reconciled_items_changed: number;
+  compact_removed_workers: number;
+  compact_removed_runs: number;
+  compact_removed_crews: number;
+}
+
+export interface InstallReport {
+  installed_at: string;
+  town_dir: string;
+  checks: string[];
+  workflow_templates_existing: number;
+  prompt_templates_builtin: number;
+}
+
+export interface RolesStatus {
+  mayor_enabled: boolean;
+  deacon_enabled: boolean;
+  witness_enabled: boolean;
+  updated_at: string | null;
+}
+
+export interface MayorPlanReport {
+  planned_at: string;
+  rig_id: string;
+  objective: string;
+  convoy_id: string | null;
+  created_task_ids: string[];
+}
+
+export interface DeaconPatrolReport {
+  patrolled_at: string;
+  rig_scope: string | null;
+  reconciled_items_changed: number;
+  escalated_tasks: number;
+}
+
+export interface WitnessAlert {
+  severity: string;
+  code: string;
+  message: string;
+}
+
+export interface WitnessReport {
+  observed_at: string;
+  rig_id: string;
+  total_tasks: number;
+  stuck_tasks: number;
+  blocked_tasks: number;
+  escalated_tasks: number;
+  workers_running: number;
+  workers_failed: number;
+  hooks_idle: number;
+  hooks_assigned: number;
+  hooks_running: number;
+  alerts: WitnessAlert[];
+}
+
+export interface RefineryQueueItem {
+  crew_id: string;
+  crew_name: string;
+  branch: string;
+  has_uncommitted_changes: boolean;
+  ahead_by_commits: number;
+  status: string;
+}
+
+export interface RefinerySkipItem {
+  crew_id: string;
+  crew_name: string;
+  branch: string;
+  reason: string;
+}
+
+export interface RefineryConflictItem {
+  crew_id: string;
+  crew_name: string;
+  branch: string;
+  error: string;
+}
+
+export interface RefinerySyncReport {
+  rig_id: string;
+  base_branch: string;
+  synced_at: string;
+  merged_branches: string[];
+  skipped: RefinerySkipItem[];
+  conflicts: RefineryConflictItem[];
+  warnings: string[];
+  pushed: boolean;
+  restored_branch: string | null;
+}
+
 export async function getHealthMetrics(
   rigId: string,
   stuckThresholdMinutes?: number,
@@ -642,6 +892,144 @@ export async function escalateStuckTasks(
   return invoke<TaskItem[]>("escalate_stuck_tasks", {
     rigId,
     thresholdMinutes: thresholdMinutes ?? null,
+  });
+}
+
+export async function getSupervisorStatus(): Promise<SupervisorStatus> {
+  return invoke<SupervisorStatus>("get_supervisor_status");
+}
+
+export async function startSupervisor(
+  loopIntervalSeconds?: number,
+  autoRefinerySync?: boolean,
+): Promise<SupervisorStatus> {
+  return invoke<SupervisorStatus>("start_supervisor", {
+    loopIntervalSeconds: loopIntervalSeconds ?? null,
+    autoRefinerySync: autoRefinerySync ?? null,
+  });
+}
+
+export async function stopSupervisor(): Promise<SupervisorStatus> {
+  return invoke<SupervisorStatus>("stop_supervisor");
+}
+
+export async function reconcileQueue(rigId?: string): Promise<ReconcileReport> {
+  return invoke<ReconcileReport>("reconcile_queue", { rigId: rigId ?? null });
+}
+
+export async function compactState(
+  rigId?: string,
+  finishedWorkerRetentionDays?: number,
+): Promise<CompactReport> {
+  return invoke<CompactReport>("compact_state", {
+    rigId: rigId ?? null,
+    finishedWorkerRetentionDays: finishedWorkerRetentionDays ?? null,
+  });
+}
+
+export async function townUp(
+  loopIntervalSeconds?: number,
+  autoRefinerySync?: boolean,
+): Promise<SupervisorStatus> {
+  return invoke<SupervisorStatus>("town_up", {
+    loopIntervalSeconds: loopIntervalSeconds ?? null,
+    autoRefinerySync: autoRefinerySync ?? null,
+  });
+}
+
+export async function townDown(): Promise<SupervisorStatus> {
+  return invoke<SupervisorStatus>("town_down");
+}
+
+export async function townInstall(): Promise<InstallReport> {
+  return invoke<InstallReport>("town_install");
+}
+
+export async function townShutdown(): Promise<TownRuntimeStatus> {
+  return invoke<TownRuntimeStatus>("town_shutdown");
+}
+
+export async function townStatus(): Promise<TownRuntimeStatus> {
+  return invoke<TownRuntimeStatus>("town_status");
+}
+
+export async function townDoctor(rigId?: string): Promise<DoctorReport> {
+  return invoke<DoctorReport>("town_doctor", { rigId: rigId ?? null });
+}
+
+export async function townFix(
+  rigId?: string,
+  finishedWorkerRetentionDays?: number,
+): Promise<FixReport> {
+  return invoke<FixReport>("town_fix", {
+    rigId: rigId ?? null,
+    finishedWorkerRetentionDays: finishedWorkerRetentionDays ?? null,
+  });
+}
+
+export async function getRolesStatus(): Promise<RolesStatus> {
+  return invoke<RolesStatus>("get_roles_status");
+}
+
+export async function setRolesStatus(
+  mayorEnabled?: boolean,
+  deaconEnabled?: boolean,
+  witnessEnabled?: boolean,
+): Promise<RolesStatus> {
+  return invoke<RolesStatus>("set_roles_status", {
+    mayorEnabled: mayorEnabled ?? null,
+    deaconEnabled: deaconEnabled ?? null,
+    witnessEnabled: witnessEnabled ?? null,
+  });
+}
+
+export async function mayorPlanObjective(
+  rigId: string,
+  objective: string,
+  brief?: string,
+  createConvoy?: boolean,
+  priority?: TaskPriority,
+  tags?: string[],
+): Promise<MayorPlanReport> {
+  return invoke<MayorPlanReport>("mayor_plan_objective", {
+    rigId,
+    objective,
+    brief: brief ?? null,
+    createConvoy: createConvoy ?? null,
+    priority: priority ?? null,
+    tags: tags ?? null,
+  });
+}
+
+export async function deaconPatrol(
+  rigId?: string,
+  stuckThresholdMinutes?: number,
+): Promise<DeaconPatrolReport> {
+  return invoke<DeaconPatrolReport>("deacon_patrol", {
+    rigId: rigId ?? null,
+    stuckThresholdMinutes: stuckThresholdMinutes ?? null,
+  });
+}
+
+export async function witnessReport(rigId: string): Promise<WitnessReport> {
+  return invoke<WitnessReport>("witness_report", { rigId });
+}
+
+export async function getRefineryQueue(
+  rigId: string,
+): Promise<RefineryQueueItem[]> {
+  return invoke<RefineryQueueItem[]>("get_refinery_queue", { rigId });
+}
+
+export async function syncRigRefinery(
+  rigId: string,
+  baseBranch?: string,
+  pushRemote?: boolean,
+): Promise<RefinerySyncReport> {
+  return invoke<RefinerySyncReport>("sync_rig_refinery", {
+    rigId,
+    baseBranch: baseBranch ?? null,
+    pushRemote: pushRemote ?? null,
   });
 }
 
@@ -697,6 +1085,35 @@ export interface WorkflowInstance {
   completed_at: string | null;
 }
 
+export interface ProtomoleculeStep {
+  step_id: string;
+  title: string;
+  description: string;
+  agent_type: string;
+  dependencies: string[];
+  command_resolved: string;
+  acceptance_criteria: string | null;
+}
+
+export interface Protomolecule {
+  protomolecule_id: string;
+  template_id: string;
+  template_name: string;
+  variables_resolved: Record<string, string>;
+  steps: ProtomoleculeStep[];
+  cooked_at: string;
+}
+
+export interface WispPreview {
+  wisp_id: string;
+  template_id: string;
+  template_name: string;
+  rig_id: string;
+  variables_resolved: Record<string, string>;
+  ready_steps: string[];
+  created_at: string;
+}
+
 export async function listWorkflowTemplates(): Promise<WorkflowTemplate[]> {
   return invoke<WorkflowTemplate[]>("list_workflow_templates");
 }
@@ -749,6 +1166,40 @@ export async function instantiateWorkflow(
     templateId,
     rigId,
     convoyId,
+    variables,
+  });
+}
+
+export async function cookFormula(
+  templateId: string,
+  variables: Record<string, string>,
+): Promise<Protomolecule> {
+  return invoke<Protomolecule>("cook_formula", {
+    templateId,
+    variables,
+  });
+}
+
+export async function pourProtomolecule(
+  protomolecule: Protomolecule,
+  rigId: string,
+  convoyId: string | null,
+): Promise<WorkflowInstance> {
+  return invoke<WorkflowInstance>("pour_protomolecule", {
+    protomolecule,
+    rigId,
+    convoyId,
+  });
+}
+
+export async function createWispPreview(
+  templateId: string,
+  rigId: string,
+  variables: Record<string, string>,
+): Promise<WispPreview> {
+  return invoke<WispPreview>("create_wisp_preview", {
+    templateId,
+    rigId,
     variables,
   });
 }

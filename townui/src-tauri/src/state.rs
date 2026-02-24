@@ -3,6 +3,7 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use tokio::sync::oneshot;
 
 /// A thread-safe writer handle for sending input to a running worker's stdin/PTY.
 pub type WorkerWriter = Box<dyn Write + Send>;
@@ -22,6 +23,73 @@ use crate::models::task::Task;
 use crate::models::worker::{LogEntry, Run, Worker};
 use crate::models::workflow::{WorkflowInstance, WorkflowTemplate};
 
+#[derive(Debug, Clone)]
+pub struct SupervisorRuntimeState {
+    pub running: bool,
+    pub started_at: Option<String>,
+    pub last_reconcile_at: Option<String>,
+    pub last_compact_at: Option<String>,
+    pub loop_interval_seconds: u64,
+    pub auto_refinery_sync: bool,
+}
+
+impl Default for SupervisorRuntimeState {
+    fn default() -> Self {
+        Self {
+            running: false,
+            started_at: None,
+            last_reconcile_at: None,
+            last_compact_at: None,
+            loop_interval_seconds: 30,
+            auto_refinery_sync: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AiInboxRuntimeState {
+    pub running: bool,
+    pub bind_addr: Option<String>,
+    pub started_at: Option<String>,
+    pub requests_total: u64,
+    pub accepted_total: u64,
+    pub rejected_total: u64,
+    pub last_error: Option<String>,
+}
+
+impl Default for AiInboxRuntimeState {
+    fn default() -> Self {
+        Self {
+            running: false,
+            bind_addr: None,
+            started_at: None,
+            requests_total: 0,
+            accepted_total: 0,
+            rejected_total: 0,
+            last_error: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OrchestratorRolesState {
+    pub mayor_enabled: bool,
+    pub deacon_enabled: bool,
+    pub witness_enabled: bool,
+    pub updated_at: Option<String>,
+}
+
+impl Default for OrchestratorRolesState {
+    fn default() -> Self {
+        Self {
+            mayor_enabled: true,
+            deacon_enabled: true,
+            witness_enabled: true,
+            updated_at: Some(chrono::Utc::now().to_rfc3339()),
+        }
+    }
+}
+
 pub struct AppState {
     pub rigs: Mutex<Vec<Rig>>,
     pub crews: Mutex<Vec<Crew>>,
@@ -38,6 +106,10 @@ pub struct AppState {
     pub settings: Mutex<AppSettings>,
     pub workflow_templates: Mutex<Vec<WorkflowTemplate>>,
     pub workflow_instances: Mutex<Vec<WorkflowInstance>>,
+    pub supervisor: Mutex<SupervisorRuntimeState>,
+    pub ai_inbox: Mutex<AiInboxRuntimeState>,
+    pub roles: Mutex<OrchestratorRolesState>,
+    pub ai_inbox_shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
     pub town_dir: PathBuf,
 }
 
@@ -82,6 +154,10 @@ impl AppState {
             settings: Mutex::new(settings),
             workflow_templates: Mutex::new(workflow_templates),
             workflow_instances: Mutex::new(workflow_instances),
+            supervisor: Mutex::new(SupervisorRuntimeState::default()),
+            ai_inbox: Mutex::new(AiInboxRuntimeState::default()),
+            roles: Mutex::new(OrchestratorRolesState::default()),
+            ai_inbox_shutdown_tx: Mutex::new(None),
             town_dir,
         }
     }
