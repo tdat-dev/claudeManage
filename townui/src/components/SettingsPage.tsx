@@ -473,7 +473,7 @@ export default function SettingsPage({
             </div>
 
             <select
-              value={current.default_cli || "claude"}
+              value={current.default_cli || "codex"}
               onChange={(e) =>
                 setDraft({ ...current, default_cli: e.target.value })
               }

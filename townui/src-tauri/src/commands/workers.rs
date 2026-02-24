@@ -1271,7 +1271,7 @@ pub fn execute_task(
     let effective_agent_type = if agent_type.trim().is_empty() {
         let settings = state.settings.lock().unwrap();
         if settings.default_cli.trim().is_empty() {
-            "claude".to_string()
+            "codex".to_string()
         } else {
             settings.default_cli.clone()
         }
@@ -1631,7 +1631,7 @@ pub fn spawn_polecat_inner(state: &AppState, app: &AppHandle, rig_id: &str) -> R
     // Resolve default agent type
     let agent_type = {
         let settings = state.settings.lock().unwrap();
-        settings.cli_paths.keys().next().cloned().unwrap_or_else(|| "claude".to_string())
+        settings.cli_paths.keys().next().cloned().unwrap_or_else(|| "codex".to_string())
     };
 
     let worker = spawn_worker_inner(
@@ -1655,7 +1655,7 @@ pub fn spawn_worker_for_propulsion(
 ) -> Result<String, String> {
     let agent_type = {
         let settings = state.settings.lock().unwrap();
-        settings.cli_paths.keys().next().cloned().unwrap_or_else(|| "claude".to_string())
+        settings.cli_paths.keys().next().cloned().unwrap_or_else(|| "codex".to_string())
     };
 
     let prompt = task_id

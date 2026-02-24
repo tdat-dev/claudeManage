@@ -14,78 +14,78 @@ const ACTOR_PRESETS = [
   {
     name: "Mayor",
     role: "coordinator",
-    agentType: "claude",
+    agentType: "codex",
     icon: "👑",
     desc: "Central orchestrator — creates plans, dispatches work",
   },
   {
     name: "Architect",
     role: "architect",
-    agentType: "claude",
+    agentType: "codex",
     icon: "🏗️",
     desc: "System design, API contracts, tech decisions",
   },
   {
     name: "Frontend Dev",
     role: "frontend",
-    agentType: "claude",
+    agentType: "codex",
     icon: "🎨",
     desc: "UI components, styling, client logic",
   },
   {
     name: "Backend Dev",
     role: "backend",
-    agentType: "claude",
+    agentType: "codex",
     icon: "⚙️",
     desc: "APIs, services, database, business logic",
   },
   {
     name: "QA Tester",
     role: "qa",
-    agentType: "claude",
+    agentType: "codex",
     icon: "🧪",
     desc: "Write & run tests, find bugs, verify",
   },
   {
     name: "DevOps",
     role: "devops",
-    agentType: "claude",
+    agentType: "codex",
     icon: "🚀",
     desc: "CI/CD, deployment, infrastructure",
   },
   {
     name: "Security",
     role: "security",
-    agentType: "claude",
+    agentType: "codex",
     icon: "🛡️",
     desc: "Security review, vulnerability scanning",
   },
   {
     name: "Reviewer",
     role: "reviewer",
-    agentType: "claude",
+    agentType: "codex",
     icon: "🔍",
     desc: "Code review, PR feedback, standards",
   },
   {
     name: "Docs Writer",
     role: "docs",
-    agentType: "claude",
+    agentType: "codex",
     icon: "📚",
     desc: "Documentation, guides, changelogs",
   },
   {
     name: "Hotfix",
     role: "hotfix",
-    agentType: "claude",
+    agentType: "codex",
     icon: "🔥",
     desc: "Emergency fixes, quick patches",
   },
 ];
 
 const AGENT_TYPES = [
-  "claude",
   "codex",
+  "claude",
   "aider",
   "cursor",
   "cline",
@@ -108,7 +108,7 @@ export default function ActorPanel({
   onDelete,
 }: ActorPanelProps) {
   const { settings } = useSettings();
-  const defaultCli = settings?.default_cli || "claude";
+  const defaultCli = settings?.default_cli || "codex";
   const [tab, setTab] = useState<"presets" | "custom">("presets");
   const [creating, setCreating] = useState(false);
 

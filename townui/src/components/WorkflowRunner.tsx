@@ -4,7 +4,10 @@ import {
   WorkflowInstance,
   WorkflowStep,
   StepStatus,
+  CrewInfo,
   spawnWorker,
+  listWorkers,
+  writeToWorker,
 } from "../lib/tauri";
 import { useWorkflows } from "../hooks/useWorkflows";
 import { useCrews } from "../hooks/useCrews";
@@ -67,7 +70,12 @@ function resolveStepCommand(
 ): string {
   return commandTemplate.replace(/\{\{(.*?)\}\}/g, (_, rawKey: string) => {
     const key = rawKey.trim();
-    return variables[key] ?? "";
+    const value = variables[key];
+    // Keep unknown/empty placeholders visible instead of silently blanking them.
+    if (typeof value !== "string" || value.trim().length === 0) {
+      return `{{${key}}}`;
+    }
+    return value;
   });
 }
 
@@ -89,6 +97,33 @@ function getFirstReadyStep(
   }
 
   return null;
+}
+
+function selectCrewForStep(
+  step: WorkflowStep,
+  crews: CrewInfo[],
+): CrewInfo | null {
+  if (crews.length === 0) return null;
+  const byName = (token: string) =>
+    crews.find((c) => c.name.toLowerCase().includes(token));
+  const sid = step.step_id.toLowerCase();
+
+  if (sid.includes("plan") || sid.includes("design")) {
+    return byName("architect") ?? crews[0];
+  }
+  if (sid.includes("implement")) {
+    return byName("backend") ?? byName("frontend") ?? crews[0];
+  }
+  if (sid.includes("test")) {
+    return byName("qa") ?? crews[0];
+  }
+  if (sid.includes("review")) {
+    return byName("review") ?? byName("architect") ?? crews[0];
+  }
+  if (sid.includes("deploy")) {
+    return byName("devops") ?? byName("release") ?? crews[0];
+  }
+  return crews[0];
 }
 
 // ── Template Creator ──
@@ -113,7 +148,7 @@ function TemplateCreateForm({
       title: "",
       description: "",
       command_template: "",
-      agent_type: "claude",
+      agent_type: "codex",
       dependencies: [],
       acceptance_criteria: null,
     },
@@ -128,7 +163,7 @@ function TemplateCreateForm({
         title: "",
         description: "",
         command_template: "",
-        agent_type: "claude",
+        agent_type: "codex",
         dependencies: [],
         acceptance_criteria: null,
       },
@@ -312,8 +347,13 @@ function InstantiateForm({
     return init;
   });
   const [saving, setSaving] = useState(false);
+  const missingVars = template.variables.filter(
+    (v) => !((vars[v] ?? "").trim().length > 0),
+  );
+  const canCreate = missingVars.length === 0 && !saving;
 
   const handleSubmit = async () => {
+    if (!canCreate) return;
     setSaving(true);
     try {
       await onSubmit(vars);
@@ -349,10 +389,15 @@ function InstantiateForm({
       {template.variables.length === 0 && (
         <p className="text-xs text-town-text-muted">No variables to fill in.</p>
       )}
+      {missingVars.length > 0 && (
+        <div className="rounded-lg border border-town-warning/25 bg-town-warning/10 px-3 py-2 text-xs text-town-warning">
+          Missing required variables: {missingVars.join(", ")}
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <button
           onClick={handleSubmit}
-          disabled={saving}
+          disabled={!canCreate}
           className="btn-success"
         >
           {saving ? "Creating..." : "Create Instance"}
@@ -776,7 +821,8 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                 step: WorkflowStep,
               ) => {
                 setRunError(null);
-                if (crews.length === 0) {
+                const targetCrew = selectCrewForStep(step, crews);
+                if (!targetCrew) {
                   throw new Error(
                     "No active crew available. Create a crew before starting workflow steps.",
                   );
@@ -789,13 +835,44 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                 const prompt = command.trim() || step.title || step.step_id;
                 const agentType =
                   (step.agent_type || "codex").trim() || "codex";
-                const worker = await spawnWorker(crews[0].id, agentType, prompt);
+
+                // Reuse an existing running worker on the same crew+agent when possible
+                // to avoid spawning duplicate terminals for each workflow step.
+                const workers = await listWorkers(rigId);
+                const existing = workers.find(
+                  (w) =>
+                    w.status === "running" &&
+                    w.crew_id === targetCrew.id &&
+                    w.agent_type === agentType,
+                );
+
+                let workerId: string;
+                if (existing) {
+                  try {
+                    await writeToWorker(existing.id, `${prompt}\n`);
+                    workerId = existing.id;
+                  } catch {
+                    const worker = await spawnWorker(
+                      targetCrew.id,
+                      agentType,
+                      prompt,
+                    );
+                    workerId = worker.id;
+                  }
+                } else {
+                  const worker = await spawnWorker(
+                    targetCrew.id,
+                    agentType,
+                    prompt,
+                  );
+                  workerId = worker.id;
+                }
 
                 await advance(
                   instanceSnapshot.instance_id,
                   step.step_id,
                   "running",
-                  worker.id,
+                  workerId,
                 );
               };
 

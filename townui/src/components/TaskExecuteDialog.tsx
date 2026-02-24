@@ -28,7 +28,7 @@ export default function TaskExecuteDialog({
 }: TaskExecuteDialogProps) {
   const [crews, setCrews] = useState<CrewInfo[]>(propCrews ?? []);
   const [crewId, setCrewId] = useState(crews[0]?.id || "");
-  const [agentType, setAgentType] = useState("claude");
+  const [agentType, setAgentType] = useState("codex");
   const [templateName, setTemplateName] = useState("implement_feature");
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [executing, setExecuting] = useState(false);

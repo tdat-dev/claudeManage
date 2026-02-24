@@ -47,7 +47,7 @@ pub struct AppSettings {
 }
 
 fn default_cli() -> String {
-    "claude".to_string()
+    "codex".to_string()
 }
 
 fn default_language() -> String {
