@@ -488,12 +488,34 @@ pub fn done(hook_id: String, outcome: Option<String>, state: State<AppState>) ->
             .find(|h| h.hook_id == hook_id)
             .ok_or_else(|| "Hook not found".to_string())?;
 
-    let work_item_id = hook.current_work_id.clone();
-    hook.status = HookStatus::Done;
-    hook.last_heartbeat = chrono::Utc::now().to_rfc3339();
-    let updated = hook.clone();
-    state.save_hooks(&hooks);
-    drop(hooks);
+        let checkpoint = parse_done_checkpoint(&hook.state_blob);
+        let work_item_id = checkpoint
+            .as_ref()
+            .and_then(|cp| cp.work_item_id.clone())
+            .or_else(|| hook.current_work_id.clone());
+        let effective_outcome = checkpoint
+            .as_ref()
+            .and_then(|cp| cp.outcome.clone())
+            .or(outcome.clone());
+
+        hook.status = HookStatus::Done;
+        hook.last_heartbeat = chrono::Utc::now().to_rfc3339();
+
+        if checkpoint.is_none() {
+            let previous_state_blob = hook.state_blob.clone();
+            persist_done_checkpoint(
+                hook,
+                DoneCheckpointPhase::Started,
+                work_item_id.clone(),
+                effective_outcome.clone(),
+                previous_state_blob,
+            );
+        }
+
+        let updated = hook.clone();
+        state.save_hooks(&hooks);
+        (updated, work_item_id, effective_outcome)
+    };
 
     // update task outcome/done if there is current work item
     if let Some(task_id) = &work_item_id {

@@ -4,12 +4,10 @@ pub mod models;
 pub mod state;
 pub mod templates;
 
-use notify::{recommended_watcher, EventKind, RecursiveMode, Watcher};
 use models::worker::WorkerStatusEnum;
 use state::AppState;
 use tauri::{Manager, RunEvent};
 use std::process::{Command, Stdio};
-use tauri::{Emitter, Manager, RunEvent};
 
 /// Kill a process tree by PID (used during shutdown cleanup).
 fn kill_pid(pid: u32) {

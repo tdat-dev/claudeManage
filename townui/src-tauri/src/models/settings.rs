@@ -24,6 +24,26 @@ pub struct AppSettings {
     pub default_cli: String,
     #[serde(default = "default_language")]
     pub language: String,
+    // -- Startup priming --
+    #[serde(default = "default_true")]
+    pub startup_priming_enabled: bool,
+    #[serde(default)]
+    pub priming_template: Option<String>,
+    #[serde(default = "default_priming_delay_ms")]
+    pub priming_delay_ms: u64,
+    // -- Propulsion / Witness --
+    #[serde(default)]
+    pub propulsion_enabled: bool,
+    #[serde(default = "default_propulsion_interval")]
+    pub propulsion_interval_seconds: u64,
+    #[serde(default)]
+    pub witness_auto_spawn: bool,
+    #[serde(default = "default_max_polecats")]
+    pub max_polecats_per_rig: usize,
+    #[serde(default = "default_propulsion_interval")]
+    pub polecat_nudge_after_seconds: u64,
+    #[serde(default)]
+    pub ai_inbox_bridge: AiInboxBridgeSettings,
 }
 
 fn default_cli() -> String {
@@ -111,6 +131,15 @@ impl Default for AppSettings {
             default_template: "implement_feature".to_string(),
             default_cli: default_cli(),
             language: default_language(),
+            startup_priming_enabled: default_true(),
+            priming_template: None,
+            priming_delay_ms: default_priming_delay_ms(),
+            propulsion_enabled: false,
+            propulsion_interval_seconds: default_propulsion_interval(),
+            witness_auto_spawn: false,
+            max_polecats_per_rig: default_max_polecats(),
+            polecat_nudge_after_seconds: default_propulsion_interval(),
+            ai_inbox_bridge: AiInboxBridgeSettings::default(),
         }
     }
 }

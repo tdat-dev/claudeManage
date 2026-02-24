@@ -59,12 +59,23 @@ export default function SettingsPage({
   }, []);
 
   const current = draft || settings;
+  const cliKeys = Object.keys(current?.cli_paths ?? {});
+  const cliKeySignature = cliKeys.join("|");
+  const selectedCliValue = selectedCliKey
+    ? (current?.cli_paths[selectedCliKey] ?? "")
+    : "";
   const language = (current?.language ?? "en") as "en" | "vi";
-  const bridge = current?.ai_inbox_bridge ?? {
-    bind_addr: "127.0.0.1:7331",
-    token: "",
-    auto_start: false,
-  };
+
+  useEffect(() => {
+    if (!current) return;
+    if (cliKeys.length === 0) {
+      if (selectedCliKey !== "") setSelectedCliKey("");
+      return;
+    }
+    if (!selectedCliKey || !(selectedCliKey in current.cli_paths)) {
+      setSelectedCliKey(cliKeys[0]);
+    }
+  }, [current, selectedCliKey, cliKeySignature]);
 
   if (loading || !current) {
     return (
@@ -101,18 +112,6 @@ export default function SettingsPage({
     setDraft({
       ...current,
       env_vars: { ...current.env_vars, NEW_VAR: "" },
-    });
-  };
-
-  const updateBridge = (
-    patch: Partial<NonNullable<AppSettings["ai_inbox_bridge"]>>,
-  ) => {
-    setDraft({
-      ...current,
-      ai_inbox_bridge: {
-        ...bridge,
-        ...patch,
-      },
     });
   };
 
