@@ -7,6 +7,7 @@ pub mod templates;
 use models::worker::WorkerStatusEnum;
 use state::AppState;
 use tauri::{Manager, RunEvent};
+use std::process::{Command, Stdio};
 
 /// Kill a process tree by PID (used during shutdown cleanup).
 fn kill_pid(pid: u32) {
@@ -24,11 +25,48 @@ fn kill_pid(pid: u32) {
     }
 }
 
+fn auto_start_ai_inbox_bridge(app_handle: &tauri::AppHandle) {
+    let state = app_handle.state::<AppState>();
+    let bridge_settings = {
+        let settings = state.settings.lock().unwrap_or_else(|e| e.into_inner());
+        settings.ai_inbox_bridge.clone()
+    };
+
+    if !bridge_settings.auto_start {
+        return;
+    }
+
+    let mut cmd = Command::new("ai-inbox-bridge");
+    cmd.arg("--bind-addr").arg(bridge_settings.bind_addr);
+    if !bridge_settings.token.trim().is_empty() {
+        cmd.arg("--token").arg(bridge_settings.token);
+    }
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    match cmd.spawn() {
+        Ok(child) => {
+            if let Ok(mut pid_slot) = state.ai_inbox_bridge_pid.lock() {
+                *pid_slot = Some(child.id());
+            }
+            eprintln!("[startup] AI Inbox Bridge started (pid {})", child.id());
+        }
+        Err(err) => {
+            eprintln!("[startup] Failed to start AI Inbox Bridge: {}", err);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
+        .setup(|app| {
+            auto_start_ai_inbox_bridge(app.handle());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // Rigs
             commands::rigs::list_rigs,
@@ -141,6 +179,20 @@ pub fn run() {
             };
             for (worker_id, entries) in drained_logs {
                 state.save_log(&worker_id, &entries);
+            }
+
+            let bridge_pid_to_kill = {
+                if let Ok(mut bridge_pid) = state.ai_inbox_bridge_pid.lock() {
+                    let pid = *bridge_pid;
+                    *bridge_pid = None;
+                    pid
+                } else {
+                    None
+                }
+            };
+            if let Some(pid) = bridge_pid_to_kill {
+                eprintln!("[shutdown] Killing AI Inbox Bridge (pid {})", pid);
+                kill_pid(pid);
             }
         }
     });
