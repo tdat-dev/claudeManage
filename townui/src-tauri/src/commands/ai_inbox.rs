@@ -1,5 +1,6 @@
 use axum::body::Bytes;
 use axum::extract::State as AxumState;
+use axum::http::header::CONTENT_TYPE;
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -58,6 +59,48 @@ struct BriefIngestPayload {
     brief: String,
     source: Option<String>,
     default_priority: Option<TaskPriority>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct BriefIngestPayloadV2 {
+    rig_id: String,
+    brief: String,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    default_priority: Option<TaskPriority>,
+    #[serde(default)]
+    request_id: Option<String>,
+    #[serde(default)]
+    metadata: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum AiBriefV2Status {
+    Accepted,
+    Rejected,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct AiBriefV2Data {
+    created_count: usize,
+    task_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct AiBriefV2Error {
+    code: String,
+    message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct AiBriefV2Envelope {
+    ok: bool,
+    request_id: String,
+    status: AiBriefV2Status,
+    data: Option<AiBriefV2Data>,
+    error: Option<AiBriefV2Error>,
 }
 
 #[derive(Debug, Clone)]
@@ -127,6 +170,7 @@ pub fn start_ai_inbox(
             .route("/health", get(health_handler))
             .route("/api/ai/tasks", post(post_ai_tasks).options(preflight))
             .route("/api/ai/brief", post(post_ai_brief).options(preflight))
+            .route("/api/ai/brief/v2", post(post_ai_brief_v2).options(preflight))
             .with_state(ctx)
             .layer(
                 CorsLayer::new()
@@ -268,6 +312,132 @@ async fn post_ai_brief(
     }
 }
 
+async fn post_ai_brief_v2(
+    AxumState(ctx): AxumState<BridgeContext>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> impl axum::response::IntoResponse {
+    mark_request(&ctx.app);
+
+    let mut request_id = resolve_request_id_v2(&headers, None);
+    if !authorized(&headers, &ctx.token) {
+        mark_rejected(&ctx.app, "Unauthorized AI brief request (v2)");
+        return v2_error_response(
+            StatusCode::UNAUTHORIZED,
+            request_id,
+            "UNAUTHORIZED",
+            "Missing or invalid x-townui-token header",
+        );
+    }
+
+    if !has_json_content_type(&headers) {
+        mark_rejected(&ctx.app, "Unsupported content-type for AI brief v2 request");
+        return v2_error_response(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            request_id,
+            "UNSUPPORTED_MEDIA_TYPE",
+            "Content-Type must be application/json",
+        );
+    }
+
+    let payload: BriefIngestPayloadV2 = match serde_json::from_slice(&body) {
+        Ok(payload) => payload,
+        Err(err) => {
+            let msg = format!("Invalid brief v2 JSON payload: {}", err);
+            mark_rejected(&ctx.app, &msg);
+            return v2_error_response(
+                StatusCode::BAD_REQUEST,
+                request_id,
+                "INVALID_JSON",
+                "Request body must be valid JSON matching the /api/ai/brief/v2 schema",
+            );
+        }
+    };
+    request_id = resolve_request_id_v2(&headers, payload.request_id.as_deref());
+
+    if !payload.rig_id.trim().is_empty() && !payload.brief.trim().is_empty() {
+        if let Some(source) = payload.source.as_deref() {
+            if source.trim().is_empty() {
+                mark_rejected(&ctx.app, "Validation failed: source cannot be empty");
+                return v2_error_response(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    request_id,
+                    "VALIDATION_ERROR",
+                    "Field 'source' must be a non-empty string when provided",
+                );
+            }
+        }
+    } else {
+        mark_rejected(&ctx.app, "Validation failed: missing rig_id/brief");
+        return v2_error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            request_id,
+            "VALIDATION_ERROR",
+            "Fields 'rig_id' and 'brief' are required and must be non-empty strings",
+        );
+    }
+
+    if let Some(metadata) = payload.metadata.as_ref() {
+        if !metadata.is_object() {
+            mark_rejected(&ctx.app, "Validation failed: metadata must be object");
+            return v2_error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                request_id,
+                "VALIDATION_ERROR",
+                "Field 'metadata' must be a JSON object when provided",
+            );
+        }
+    }
+
+    let source_from_header = headers
+        .get("x-ai-source")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string);
+    let source = source_from_header
+        .or_else(|| payload.source.clone())
+        .unwrap_or_else(|| "ai_bridge_brief_v2".to_string());
+
+    let drafts = parse_brief_to_drafts(
+        &payload.brief,
+        payload.default_priority.unwrap_or(TaskPriority::Medium),
+    );
+    if drafts.is_empty() {
+        mark_rejected(&ctx.app, "No task lines detected from brief payload");
+        return v2_error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            request_id,
+            "EMPTY_BRIEF",
+            "No task lines detected from brief",
+        );
+    }
+
+    match create_tasks_from_drafts(&ctx.app, payload.rig_id.clone(), drafts, &source) {
+        Ok(created) => {
+            mark_accepted(&ctx.app, created.len());
+            (
+                StatusCode::OK,
+                Json(AiBriefV2Envelope {
+                    ok: true,
+                    request_id,
+                    status: AiBriefV2Status::Accepted,
+                    data: Some(AiBriefV2Data {
+                        created_count: created.len(),
+                        task_ids: created.into_iter().map(|t| t.id).collect(),
+                    }),
+                    error: None,
+                }),
+            )
+        }
+        Err(err) => {
+            mark_rejected(&ctx.app, &err);
+            let (status, code, message) = map_v2_task_creation_error(&err);
+            v2_error_response(status, request_id, code, message)
+        }
+    }
+}
+
 async fn post_ai_tasks(
     AxumState(ctx): AxumState<BridgeContext>,
     headers: HeaderMap,
@@ -326,6 +496,75 @@ async fn post_ai_tasks(
             )
         }
     }
+}
+
+fn has_json_content_type(headers: &HeaderMap) -> bool {
+    headers
+        .get(CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|value| value.to_ascii_lowercase().starts_with("application/json"))
+        .unwrap_or(false)
+}
+
+fn resolve_request_id_v2(headers: &HeaderMap, payload_request_id: Option<&str>) -> String {
+    headers
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            payload_request_id
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
+}
+
+fn map_v2_task_creation_error(error: &str) -> (StatusCode, &'static str, &'static str) {
+    if error.contains("Rig not found") {
+        return (
+            StatusCode::NOT_FOUND,
+            "RIG_NOT_FOUND",
+            "The specified rig_id does not exist",
+        );
+    }
+
+    if error.contains("Task title cannot be empty") {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "VALIDATION_ERROR",
+            "Task title cannot be empty",
+        );
+    }
+
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "INTERNAL_ERROR",
+        "Failed to create tasks from the provided brief",
+    )
+}
+
+fn v2_error_response(
+    status: StatusCode,
+    request_id: String,
+    code: impl Into<String>,
+    message: impl Into<String>,
+) -> (StatusCode, Json<AiBriefV2Envelope>) {
+    (
+        status,
+        Json(AiBriefV2Envelope {
+            ok: false,
+            request_id,
+            status: AiBriefV2Status::Rejected,
+            data: None,
+            error: Some(AiBriefV2Error {
+                code: code.into(),
+                message: message.into(),
+            }),
+        }),
+    )
 }
 
 fn normalize_task_payload(payload: Value) -> Result<(String, Vec<IncomingTaskDraft>, String), String> {

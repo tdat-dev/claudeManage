@@ -35,6 +35,21 @@ fn normalize_settings(mut settings: AppSettings) -> AppSettings {
     if settings.ai_inbox_bridge.bind_addr.trim().is_empty() {
         settings.ai_inbox_bridge.bind_addr = defaults.ai_inbox_bridge.bind_addr;
     }
+    if settings.ai_inbox_bridge.rate_limit_max_requests == 0 {
+        settings.ai_inbox_bridge.rate_limit_max_requests =
+            defaults.ai_inbox_bridge.rate_limit_max_requests;
+    }
+    if settings.ai_inbox_bridge.rate_limit_window_seconds == 0 {
+        settings.ai_inbox_bridge.rate_limit_window_seconds =
+            defaults.ai_inbox_bridge.rate_limit_window_seconds;
+    }
+    settings.ai_inbox_bridge.ip_allowlist = settings
+        .ai_inbox_bridge
+        .ip_allowlist
+        .into_iter()
+        .map(|ip| ip.trim().to_string())
+        .filter(|ip| !ip.is_empty())
+        .collect();
 
     settings
 }

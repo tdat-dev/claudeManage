@@ -4,6 +4,8 @@ fn default_true() -> bool { true }
 fn default_priming_delay_ms() -> u64 { 1500 }
 fn default_propulsion_interval() -> u64 { 60 }
 fn default_max_polecats() -> usize { 5 }
+fn default_ai_inbox_rate_limit_max_requests() -> u32 { 60 }
+fn default_ai_inbox_rate_limit_window_seconds() -> u64 { 60 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiInboxBridgeSettings {
@@ -13,6 +15,12 @@ pub struct AiInboxBridgeSettings {
     pub token: String,
     #[serde(default)]
     pub auto_start: bool,
+    #[serde(default)]
+    pub ip_allowlist: Vec<String>,
+    #[serde(default = "default_ai_inbox_rate_limit_max_requests")]
+    pub rate_limit_max_requests: u32,
+    #[serde(default = "default_ai_inbox_rate_limit_window_seconds")]
+    pub rate_limit_window_seconds: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +72,9 @@ impl Default for AiInboxBridgeSettings {
             bind_addr: default_bridge_bind_addr(),
             token: String::new(),
             auto_start: false,
+            ip_allowlist: Vec::new(),
+            rate_limit_max_requests: default_ai_inbox_rate_limit_max_requests(),
+            rate_limit_window_seconds: default_ai_inbox_rate_limit_window_seconds(),
         }
     }
 }
