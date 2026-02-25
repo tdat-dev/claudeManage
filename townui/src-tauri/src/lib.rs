@@ -181,6 +181,7 @@ pub fn run() {
             commands::workflows::delete_workflow_template,
             commands::workflows::list_workflow_instances,
             commands::workflows::get_workflow_instance,
+            commands::workflows::delete_workflow_instance,
             commands::workflows::instantiate_workflow,
             commands::workflows::cook_formula,
             commands::workflows::pour_protomolecule,

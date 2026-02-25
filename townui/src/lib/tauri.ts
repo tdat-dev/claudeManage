@@ -1221,6 +1221,10 @@ export async function getWorkflowInstance(
   return invoke<WorkflowInstance>("get_workflow_instance", { instanceId });
 }
 
+export async function deleteWorkflowInstance(instanceId: string): Promise<void> {
+  return invoke<void>("delete_workflow_instance", { instanceId });
+}
+
 export async function instantiateWorkflow(
   templateId: string,
   rigId: string,

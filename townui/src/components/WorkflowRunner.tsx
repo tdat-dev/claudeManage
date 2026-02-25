@@ -81,7 +81,7 @@ function resolveStepCommand(
   });
 }
 
-function getFirstReadyStep(
+function getFirstRunnableStep(
   instance: WorkflowInstance,
   template: WorkflowTemplate | null,
 ): WorkflowStep | null {
@@ -89,7 +89,12 @@ function getFirstReadyStep(
 
   for (const step of template.steps) {
     const stepState = instance.steps_status[step.step_id];
-    if (!stepState || stepState.status !== "pending") continue;
+    if (
+      !stepState ||
+      (stepState.status !== "pending" && stepState.status !== "failed")
+    ) {
+      continue;
+    }
 
     const depsReady = step.dependencies.every((dep) => {
       const depStatus = instance.steps_status[dep]?.status;
@@ -439,6 +444,11 @@ function InstanceView({
   onRunStep,
   onStart,
   onCancel,
+  onDelete,
+  isDeleting,
+  isConfirmingDelete,
+  onAskDelete,
+  onCancelDelete,
 }: {
   instance: WorkflowInstance;
   template: WorkflowTemplate | null;
@@ -447,6 +457,11 @@ function InstanceView({
   onRunStep: (step: WorkflowStep) => Promise<void>;
   onStart: () => Promise<void>;
   onCancel: () => Promise<void>;
+  onDelete: () => Promise<void>;
+  isDeleting: boolean;
+  isConfirmingDelete: boolean;
+  onAskDelete: () => void;
+  onCancelDelete: () => void;
 }) {
   const steps = template?.steps ?? [];
   const sc = statusColors[instance.status] ?? statusColors.created;
@@ -474,12 +489,12 @@ function InstanceView({
           <span className="text-[10px] text-town-text-faint font-mono">
             {pct}% ({doneCount}/{total})
           </span>
-          {instance.status === "created" && (
+          {(instance.status === "created" || instance.status === "failed") && (
             <button
               onClick={onStart}
               className="btn-success !py-0.5 !px-2 !text-[11px]"
             >
-              ▶ Start
+              {instance.status === "failed" ? "↻ Resume" : "▶ Start"}
             </button>
           )}
           {(instance.status === "created" || instance.status === "running") && (
@@ -488,6 +503,30 @@ function InstanceView({
               className="btn-base !py-0.5 !px-2 !text-[11px] text-town-danger"
             >
               Cancel
+            </button>
+          )}
+          {isConfirmingDelete ? (
+            <div className="flex items-center gap-1 animate-fade-in">
+              <button
+                onClick={onDelete}
+                disabled={isDeleting}
+                className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-town-danger/15 text-town-danger disabled:opacity-60"
+              >
+                {isDeleting ? "Deleting..." : "Confirm"}
+              </button>
+              <button
+                onClick={onCancelDelete}
+                className="px-1.5 py-0.5 text-[10px] text-town-text-muted"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={onAskDelete}
+              className="btn-base !py-0.5 !px-2 !text-[11px] text-town-danger"
+            >
+              Delete
             </button>
           )}
         </div>
@@ -512,8 +551,8 @@ function InstanceView({
               instance.steps_status[d]?.status === "skipped",
           );
           const canRun =
-            instance.status === "running" &&
-            state.status === "pending" &&
+            (instance.status === "running" || instance.status === "failed") &&
+            (state.status === "pending" || state.status === "failed") &&
             depsReady;
           const stepRunKey = `${instance.instance_id}:${step.step_id}`;
           const launchingThisStep = launchingRunKey === stepRunKey;
@@ -545,7 +584,11 @@ function InstanceView({
                     disabled={launchingThisStep}
                     className="btn-primary !py-0.5 !px-2 !text-[10px]"
                   >
-                    {launchingThisStep ? "Starting..." : "▶ Run"}
+                    {launchingThisStep
+                      ? "Starting..."
+                      : state.status === "failed"
+                        ? "↻ Retry"
+                        : "▶ Run"}
                   </button>
                 )}
                 {canDone && (
@@ -588,6 +631,7 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
     loading,
     addTemplate,
     removeTemplate,
+    removeInstance,
     instantiate,
     start,
     advance,
@@ -602,8 +646,15 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
   const [runError, setRunError] = useState<string | null>(null);
   const [launchingRunKey, setLaunchingRunKey] = useState<string | null>(null);
 
-  // Confirm delete
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmDeleteTemplateId, setConfirmDeleteTemplateId] = useState<
+    string | null
+  >(null);
+  const [confirmDeleteInstanceId, setConfirmDeleteInstanceId] = useState<
+    string | null
+  >(null);
+  const [deletingInstanceId, setDeletingInstanceId] = useState<string | null>(
+    null,
+  );
 
   const waitForWorkerReady = async (workerId: string): Promise<boolean> => {
     const deadline = Date.now() + WORKER_READY_TIMEOUT_MS;
@@ -785,19 +836,19 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                   >
                     Instantiate
                   </button>
-                  {confirmDeleteId === t.template_id ? (
+                  {confirmDeleteTemplateId === t.template_id ? (
                     <div className="flex items-center gap-1 animate-fade-in">
                       <button
                         onClick={async () => {
                           await removeTemplate(t.template_id);
-                          setConfirmDeleteId(null);
+                          setConfirmDeleteTemplateId(null);
                         }}
                         className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-town-danger/15 text-town-danger"
                       >
                         Confirm
                       </button>
                       <button
-                        onClick={() => setConfirmDeleteId(null)}
+                        onClick={() => setConfirmDeleteTemplateId(null)}
                         className="px-1.5 py-0.5 text-[10px] text-town-text-muted"
                       >
                         Cancel
@@ -805,20 +856,10 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                     </div>
                   ) : (
                     <button
-                      onClick={() => setConfirmDeleteId(t.template_id)}
-                      className="p-1.5 rounded-md text-town-text-faint hover:text-town-danger transition-colors opacity-0 group-hover:opacity-100"
+                      onClick={() => setConfirmDeleteTemplateId(t.template_id)}
+                      className="btn-base !py-1 !px-2 !text-[10px] text-town-danger"
                     >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                      </svg>
+                      Delete
                     </button>
                   )}
                 </div>
@@ -880,18 +921,22 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                 const prompt = command.trim() || step.title || step.step_id;
                 const agentType =
                   (step.agent_type || "codex").trim() || "codex";
+                const runPromptOnSpawn =
+                  agentType.toLowerCase() === "codex";
                 let phase: "spawn" | "ready" | "send" | "advance" = "spawn";
 
                 try {
                   // Reuse an existing running worker on the same crew+agent when possible
                   // to avoid spawning duplicate terminals for each workflow step.
                   const workers = await listWorkers(rigId);
-                  const existing = workers.find(
-                    (w) =>
-                      w.status === "running" &&
-                      w.crew_id === targetCrew.id &&
-                      w.agent_type === agentType,
-                  );
+                  const existing = runPromptOnSpawn
+                    ? undefined
+                    : workers.find(
+                        (w) =>
+                          w.status === "running" &&
+                          w.crew_id === targetCrew.id &&
+                          w.agent_type === agentType,
+                      );
 
                   let workerId: string;
                   if (existing) {
@@ -900,22 +945,26 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                     const worker = await spawnWorker(
                       targetCrew.id,
                       agentType,
-                      "",
+                      runPromptOnSpawn ? prompt : "",
                       { skipPriming: true },
                     );
                     workerId = worker.id;
 
-                    phase = "ready";
-                    const ready = await waitForWorkerReady(workerId);
-                    if (!ready) {
-                      setRunError(
-                        "Worker startup check timed out. Sending prompt anyway.",
-                      );
+                    if (!runPromptOnSpawn) {
+                      phase = "ready";
+                      const ready = await waitForWorkerReady(workerId);
+                      if (!ready) {
+                        setRunError(
+                          "Worker startup check timed out. Sending prompt anyway.",
+                        );
+                      }
                     }
                   }
 
-                  phase = "send";
-                  await writeLineToWorker(workerId, prompt);
+                  if (!runPromptOnSpawn) {
+                    phase = "send";
+                    await writeLineToWorker(workerId, prompt);
+                  }
 
                   phase = "advance";
                   await advance(
@@ -961,7 +1010,7 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                   onStart={async () => {
                     try {
                       const started = await start(inst.instance_id);
-                      const firstReady = getFirstReadyStep(started, tpl);
+                      const firstReady = getFirstRunnableStep(started, tpl);
                       if (firstReady) {
                         await runStepWithWorker(started, firstReady);
                       }
@@ -972,6 +1021,27 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                   onCancel={async () => {
                     await cancel(inst.instance_id);
                   }}
+                  onDelete={async () => {
+                    try {
+                      setDeletingInstanceId(inst.instance_id);
+                      await removeInstance(inst.instance_id);
+                      setConfirmDeleteInstanceId((current) =>
+                        current === inst.instance_id ? null : current,
+                      );
+                    } catch (e) {
+                      setRunError(String(e));
+                    } finally {
+                      setDeletingInstanceId((current) =>
+                        current === inst.instance_id ? null : current,
+                      );
+                    }
+                  }}
+                  isDeleting={deletingInstanceId === inst.instance_id}
+                  isConfirmingDelete={
+                    confirmDeleteInstanceId === inst.instance_id
+                  }
+                  onAskDelete={() => setConfirmDeleteInstanceId(inst.instance_id)}
+                  onCancelDelete={() => setConfirmDeleteInstanceId(null)}
                 />
               );
             })}

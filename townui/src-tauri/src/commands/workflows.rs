@@ -104,6 +104,18 @@ pub fn get_workflow_instance(instance_id: String, state: State<AppState>) -> Res
 }
 
 #[tauri::command]
+pub fn delete_workflow_instance(instance_id: String, state: State<AppState>) -> Result<(), String> {
+    let mut instances = state.workflow_instances.lock().unwrap();
+    let len_before = instances.len();
+    instances.retain(|i| i.instance_id != instance_id);
+    if instances.len() == len_before {
+        return Err("Workflow instance not found".to_string());
+    }
+    state.save_workflow_instances(&instances);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn instantiate_workflow(
     template_id: String,
     rig_id: String,
@@ -260,11 +272,12 @@ pub fn start_workflow(instance_id: String, state: State<AppState>) -> Result<Wor
         .find(|i| i.instance_id == instance_id)
         .ok_or_else(|| "Workflow instance not found".to_string())?;
 
-    if instance.status != WorkflowStatus::Created {
-        return Err("Workflow already started".to_string());
+    if instance.status != WorkflowStatus::Created && instance.status != WorkflowStatus::Failed {
+        return Err("Workflow cannot be started from current status".to_string());
     }
 
     instance.status = WorkflowStatus::Running;
+    instance.completed_at = None;
     instance.updated_at = chrono::Utc::now().to_rfc3339();
     let result = instance.clone();
     state.save_workflow_instances(&instances);
@@ -340,7 +353,7 @@ pub fn advance_step(
 
     instance.updated_at = now;
 
-    // Check completion
+    // Recompute workflow status after step transition.
     let templates = state.workflow_templates.lock().unwrap();
     if let Some(template) = templates.iter().find(|t| t.template_id == instance.template_id) {
         if instance.is_complete() {
@@ -369,6 +382,11 @@ pub fn advance_step(
                     "failed_step": &step_id,
                 }).to_string(),
             ));
+        } else if instance.status != WorkflowStatus::Cancelled {
+            // Allow retry flow: if failed steps are reset/rerun successfully,
+            // move workflow back to running while work remains.
+            instance.status = WorkflowStatus::Running;
+            instance.completed_at = None;
         }
         // Check if there are still ready steps even though we're not complete
         let _ready = instance.ready_steps(template);
