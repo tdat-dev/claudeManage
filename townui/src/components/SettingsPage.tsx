@@ -59,18 +59,23 @@ export default function SettingsPage({
   }, []);
 
   const current = draft || settings;
-  const language = (current?.language ?? "en") as "en" | "vi";
   const cliKeys = Object.keys(current?.cli_paths ?? {});
+  const cliKeySignature = cliKeys.join("|");
   const selectedCliValue = selectedCliKey
-    ? (current?.cli_paths?.[selectedCliKey] ?? "")
+    ? (current?.cli_paths[selectedCliKey] ?? "")
     : "";
+  const language = (current?.language ?? "en") as "en" | "vi";
 
   useEffect(() => {
     if (!current) return;
-    if (!selectedCliKey || !current.cli_paths[selectedCliKey]) {
-      setSelectedCliKey(cliKeys[0] ?? "");
+    if (cliKeys.length === 0) {
+      if (selectedCliKey !== "") setSelectedCliKey("");
+      return;
     }
-  }, [current, selectedCliKey, cliKeys]);
+    if (!selectedCliKey || !(selectedCliKey in current.cli_paths)) {
+      setSelectedCliKey(cliKeys[0]);
+    }
+  }, [current, selectedCliKey, cliKeySignature]);
 
   if (loading || !current) {
     return (
@@ -468,7 +473,7 @@ export default function SettingsPage({
             </div>
 
             <select
-              value={current.default_cli || "claude"}
+              value={current.default_cli || "codex"}
               onChange={(e) =>
                 setDraft({ ...current, default_cli: e.target.value })
               }
@@ -858,232 +863,6 @@ export default function SettingsPage({
                 )}
               </div>
             )}
-          </section>
-
-          {/* ── Startup Priming ────────────────────────────────── */}
-          <section className="glass-card p-5 space-y-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-md bg-purple-500/10 flex items-center justify-center">
-                <span className="text-sm">🧠</span>
-              </div>
-              <div>
-                <h3 className="section-title !mb-0">Startup Priming</h3>
-                <p className="text-[11px] text-town-text-faint mt-0.5">
-                  Inject a context prompt into agents right after they spawn
-                </p>
-              </div>
-            </div>
-
-            {/* Enable toggle */}
-            <label className="flex items-center justify-between">
-              <span className="text-sm">Enable startup priming</span>
-              <button
-                role="switch"
-                aria-checked={current.startup_priming_enabled ?? true}
-                onClick={() =>
-                  setDraft({
-                    ...current,
-                    startup_priming_enabled: !(
-                      current.startup_priming_enabled ?? true
-                    ),
-                  })
-                }
-                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                  (current.startup_priming_enabled ?? true)
-                    ? "bg-town-accent"
-                    : "bg-town-border"
-                }`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
-                    (current.startup_priming_enabled ?? true)
-                      ? "translate-x-4"
-                      : "translate-x-0"
-                  }`}
-                />
-              </button>
-            </label>
-
-            {/* Priming delay */}
-            <div className="space-y-1">
-              <label className="text-xs text-town-text-muted">
-                Priming delay (ms after spawn)
-              </label>
-              <input
-                type="number"
-                min={0}
-                max={10000}
-                step={100}
-                value={current.priming_delay_ms ?? 1500}
-                onChange={(e) =>
-                  setDraft({
-                    ...current,
-                    priming_delay_ms: parseInt(e.target.value, 10) || 1500,
-                  })
-                }
-                className="input-base w-32"
-              />
-            </div>
-
-            {/* Priming template */}
-            <div className="space-y-1">
-              <label className="text-xs text-town-text-muted">
-                Custom priming template (leave blank for built-in)
-              </label>
-              <textarea
-                rows={4}
-                value={current.priming_template ?? ""}
-                placeholder="You are working on {{rig.name}} ({{rig.path}})…"
-                onChange={(e) =>
-                  setDraft({
-                    ...current,
-                    priming_template: e.target.value || null,
-                  })
-                }
-                className="input-base w-full resize-none font-mono text-[11px]"
-              />
-              <p className="text-[10px] text-town-text-faint">
-                Supports: {"{{"}rig.name{"}}"}, {"{{"}rig.path{"}}"}, {"{{"}
-                crew.name{"}}"}, {"{{"}task.title{"}}"}
-              </p>
-            </div>
-          </section>
-
-          {/* ── Propulsion & Witness ───────────────────────────── */}
-          <section className="glass-card p-5 space-y-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-md bg-green-500/10 flex items-center justify-center">
-                <span className="text-sm">🚀</span>
-              </div>
-              <div>
-                <h3 className="section-title !mb-0">
-                  Propulsion &amp; Witness
-                </h3>
-                <p className="text-[11px] text-town-text-faint mt-0.5">
-                  Auto-push idle crews and manage polecats
-                </p>
-              </div>
-            </div>
-
-            {/* Propulsion enable */}
-            <label className="flex items-center justify-between">
-              <span className="text-sm">Enable propulsion</span>
-              <button
-                role="switch"
-                aria-checked={current.propulsion_enabled ?? false}
-                onClick={() =>
-                  setDraft({
-                    ...current,
-                    propulsion_enabled: !(current.propulsion_enabled ?? false),
-                  })
-                }
-                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                  (current.propulsion_enabled ?? false)
-                    ? "bg-town-accent"
-                    : "bg-town-border"
-                }`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
-                    (current.propulsion_enabled ?? false)
-                      ? "translate-x-4"
-                      : "translate-x-0"
-                  }`}
-                />
-              </button>
-            </label>
-
-            {/* Propulsion interval */}
-            <div className="space-y-1">
-              <label className="text-xs text-town-text-muted">
-                Propulsion interval (seconds)
-              </label>
-              <input
-                type="number"
-                min={10}
-                max={3600}
-                step={10}
-                value={current.propulsion_interval_seconds ?? 60}
-                onChange={(e) =>
-                  setDraft({
-                    ...current,
-                    propulsion_interval_seconds:
-                      parseInt(e.target.value, 10) || 60,
-                  })
-                }
-                className="input-base w-32"
-              />
-            </div>
-
-            {/* Witness auto-spawn */}
-            <label className="flex items-center justify-between">
-              <span className="text-sm">Witness: auto-spawn polecats</span>
-              <button
-                role="switch"
-                aria-checked={current.witness_auto_spawn ?? false}
-                onClick={() =>
-                  setDraft({
-                    ...current,
-                    witness_auto_spawn: !(current.witness_auto_spawn ?? false),
-                  })
-                }
-                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                  (current.witness_auto_spawn ?? false)
-                    ? "bg-town-accent"
-                    : "bg-town-border"
-                }`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
-                    (current.witness_auto_spawn ?? false)
-                      ? "translate-x-4"
-                      : "translate-x-0"
-                  }`}
-                />
-              </button>
-            </label>
-
-            {/* Max polecats */}
-            <div className="space-y-1">
-              <label className="text-xs text-town-text-muted">
-                Max polecats per rig
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={20}
-                value={current.max_polecats_per_rig ?? 5}
-                onChange={(e) =>
-                  setDraft({
-                    ...current,
-                    max_polecats_per_rig: parseInt(e.target.value, 10) || 5,
-                  })
-                }
-                className="input-base w-24"
-              />
-            </div>
-
-            {/* Polecat nudge after */}
-            <div className="space-y-1">
-              <label className="text-xs text-town-text-muted">
-                Nudge polecat after (seconds idle)
-              </label>
-              <input
-                type="number"
-                min={10}
-                max={600}
-                step={10}
-                value={current.polecat_nudge_after_seconds ?? 60}
-                onChange={(e) =>
-                  setDraft({
-                    ...current,
-                    polecat_nudge_after_seconds:
-                      parseInt(e.target.value, 10) || 60,
-                  })
-                }
-                className="input-base w-32"
-              />
-            </div>
           </section>
 
           {/* Language */}

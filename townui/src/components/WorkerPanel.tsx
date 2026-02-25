@@ -31,7 +31,7 @@ export default function WorkerPanel({
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showSpawn, setShowSpawn] = useState(false);
   const [crewId, setCrewId] = useState(crews[0]?.id || "");
-  const [agentType, setAgentType] = useState("claude");
+  const [agentType, setAgentType] = useState("codex");
   const [prompt, setPrompt] = useState("");
   const [spawning, setSpawning] = useState(false);
 

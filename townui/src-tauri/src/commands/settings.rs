@@ -32,6 +32,10 @@ fn normalize_settings(mut settings: AppSettings) -> AppSettings {
         settings.language = defaults.language;
     }
 
+    if settings.ai_inbox_bridge.bind_addr.trim().is_empty() {
+        settings.ai_inbox_bridge.bind_addr = defaults.ai_inbox_bridge.bind_addr;
+    }
+
     settings
 }
 

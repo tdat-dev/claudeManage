@@ -4,7 +4,12 @@ import {
   WorkflowInstance,
   WorkflowStep,
   StepStatus,
+  CrewInfo,
+  LogEntry,
   spawnWorker,
+  listWorkers,
+  getWorkerLogs,
+  writeLineToWorker,
 } from "../lib/tauri";
 import { useWorkflows } from "../hooks/useWorkflows";
 import { useCrews } from "../hooks/useCrews";
@@ -67,11 +72,16 @@ function resolveStepCommand(
 ): string {
   return commandTemplate.replace(/\{\{(.*?)\}\}/g, (_, rawKey: string) => {
     const key = rawKey.trim();
-    return variables[key] ?? "";
+    const value = variables[key];
+    // Keep unknown/empty placeholders visible instead of silently blanking them.
+    if (typeof value !== "string" || value.trim().length === 0) {
+      return `{{${key}}}`;
+    }
+    return value;
   });
 }
 
-function getFirstReadyStep(
+function getFirstRunnableStep(
   instance: WorkflowInstance,
   template: WorkflowTemplate | null,
 ): WorkflowStep | null {
@@ -79,7 +89,12 @@ function getFirstReadyStep(
 
   for (const step of template.steps) {
     const stepState = instance.steps_status[step.step_id];
-    if (!stepState || stepState.status !== "pending") continue;
+    if (
+      !stepState ||
+      (stepState.status !== "pending" && stepState.status !== "failed")
+    ) {
+      continue;
+    }
 
     const depsReady = step.dependencies.every((dep) => {
       const depStatus = instance.steps_status[dep]?.status;
@@ -89,6 +104,51 @@ function getFirstReadyStep(
   }
 
   return null;
+}
+
+function selectCrewForStep(
+  step: WorkflowStep,
+  crews: CrewInfo[],
+): CrewInfo | null {
+  if (crews.length === 0) return null;
+  const byName = (token: string) =>
+    crews.find((c) => c.name.toLowerCase().includes(token));
+  const sid = step.step_id.toLowerCase();
+
+  if (sid.includes("plan") || sid.includes("design")) {
+    return byName("architect") ?? crews[0];
+  }
+  if (sid.includes("implement")) {
+    return byName("backend") ?? byName("frontend") ?? crews[0];
+  }
+  if (sid.includes("test")) {
+    return byName("qa") ?? crews[0];
+  }
+  if (sid.includes("review")) {
+    return byName("review") ?? byName("architect") ?? crews[0];
+  }
+  if (sid.includes("deploy")) {
+    return byName("devops") ?? byName("release") ?? crews[0];
+  }
+  return crews[0];
+}
+
+const WORKER_READY_TIMEOUT_MS = 8000;
+const WORKER_READY_POLL_MS = 300;
+
+function hasWorkerReadySignal(logs: LogEntry[]): boolean {
+  if (logs.length === 0) return false;
+  if (logs.some((l) => l.stream === "stdout" || l.stream === "stderr")) {
+    return true;
+  }
+  return logs.some((l) => {
+    const line = l.line.toLowerCase();
+    return (
+      line.includes("openai codex") ||
+      line.includes("session id") ||
+      line.includes("codex")
+    );
+  });
 }
 
 // ── Template Creator ──
@@ -113,7 +173,7 @@ function TemplateCreateForm({
       title: "",
       description: "",
       command_template: "",
-      agent_type: "claude",
+      agent_type: "codex",
       dependencies: [],
       acceptance_criteria: null,
     },
@@ -128,7 +188,7 @@ function TemplateCreateForm({
         title: "",
         description: "",
         command_template: "",
-        agent_type: "claude",
+        agent_type: "codex",
         dependencies: [],
         acceptance_criteria: null,
       },
@@ -312,8 +372,13 @@ function InstantiateForm({
     return init;
   });
   const [saving, setSaving] = useState(false);
+  const missingVars = template.variables.filter(
+    (v) => !((vars[v] ?? "").trim().length > 0),
+  );
+  const canCreate = missingVars.length === 0 && !saving;
 
   const handleSubmit = async () => {
+    if (!canCreate) return;
     setSaving(true);
     try {
       await onSubmit(vars);
@@ -349,10 +414,15 @@ function InstantiateForm({
       {template.variables.length === 0 && (
         <p className="text-xs text-town-text-muted">No variables to fill in.</p>
       )}
+      {missingVars.length > 0 && (
+        <div className="rounded-lg border border-town-warning/25 bg-town-warning/10 px-3 py-2 text-xs text-town-warning">
+          Missing required variables: {missingVars.join(", ")}
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <button
           onClick={handleSubmit}
-          disabled={saving}
+          disabled={!canCreate}
           className="btn-success"
         >
           {saving ? "Creating..." : "Create Instance"}
@@ -369,17 +439,29 @@ function InstantiateForm({
 function InstanceView({
   instance,
   template,
+  launchingRunKey,
   onAdvance,
   onRunStep,
   onStart,
   onCancel,
+  onDelete,
+  isDeleting,
+  isConfirmingDelete,
+  onAskDelete,
+  onCancelDelete,
 }: {
   instance: WorkflowInstance;
   template: WorkflowTemplate | null;
+  launchingRunKey: string | null;
   onAdvance: (stepId: string, status: StepStatus) => Promise<void>;
   onRunStep: (step: WorkflowStep) => Promise<void>;
   onStart: () => Promise<void>;
   onCancel: () => Promise<void>;
+  onDelete: () => Promise<void>;
+  isDeleting: boolean;
+  isConfirmingDelete: boolean;
+  onAskDelete: () => void;
+  onCancelDelete: () => void;
 }) {
   const steps = template?.steps ?? [];
   const sc = statusColors[instance.status] ?? statusColors.created;
@@ -407,12 +489,12 @@ function InstanceView({
           <span className="text-[10px] text-town-text-faint font-mono">
             {pct}% ({doneCount}/{total})
           </span>
-          {instance.status === "created" && (
+          {(instance.status === "created" || instance.status === "failed") && (
             <button
               onClick={onStart}
               className="btn-success !py-0.5 !px-2 !text-[11px]"
             >
-              ▶ Start
+              {instance.status === "failed" ? "↻ Resume" : "▶ Start"}
             </button>
           )}
           {(instance.status === "created" || instance.status === "running") && (
@@ -421,6 +503,30 @@ function InstanceView({
               className="btn-base !py-0.5 !px-2 !text-[11px] text-town-danger"
             >
               Cancel
+            </button>
+          )}
+          {isConfirmingDelete ? (
+            <div className="flex items-center gap-1 animate-fade-in">
+              <button
+                onClick={onDelete}
+                disabled={isDeleting}
+                className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-town-danger/15 text-town-danger disabled:opacity-60"
+              >
+                {isDeleting ? "Deleting..." : "Confirm"}
+              </button>
+              <button
+                onClick={onCancelDelete}
+                className="px-1.5 py-0.5 text-[10px] text-town-text-muted"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={onAskDelete}
+              className="btn-base !py-0.5 !px-2 !text-[11px] text-town-danger"
+            >
+              Delete
             </button>
           )}
         </div>
@@ -445,9 +551,11 @@ function InstanceView({
               instance.steps_status[d]?.status === "skipped",
           );
           const canRun =
-            instance.status === "running" &&
-            state.status === "pending" &&
+            (instance.status === "running" || instance.status === "failed") &&
+            (state.status === "pending" || state.status === "failed") &&
             depsReady;
+          const stepRunKey = `${instance.instance_id}:${step.step_id}`;
+          const launchingThisStep = launchingRunKey === stepRunKey;
           const canDone = state.status === "running";
 
           return (
@@ -473,9 +581,14 @@ function InstanceView({
                 {canRun && (
                   <button
                     onClick={() => onRunStep(step)}
+                    disabled={launchingThisStep}
                     className="btn-primary !py-0.5 !px-2 !text-[10px]"
                   >
-                    ▶ Run
+                    {launchingThisStep
+                      ? "Starting..."
+                      : state.status === "failed"
+                        ? "↻ Retry"
+                        : "▶ Run"}
                   </button>
                 )}
                 {canDone && (
@@ -518,6 +631,7 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
     loading,
     addTemplate,
     removeTemplate,
+    removeInstance,
     instantiate,
     start,
     advance,
@@ -530,9 +644,33 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
     useState<WorkflowTemplate | null>(null);
   const [tab, setTab] = useState<"instances" | "templates">("instances");
   const [runError, setRunError] = useState<string | null>(null);
+  const [launchingRunKey, setLaunchingRunKey] = useState<string | null>(null);
 
-  // Confirm delete
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmDeleteTemplateId, setConfirmDeleteTemplateId] = useState<
+    string | null
+  >(null);
+  const [confirmDeleteInstanceId, setConfirmDeleteInstanceId] = useState<
+    string | null
+  >(null);
+  const [deletingInstanceId, setDeletingInstanceId] = useState<string | null>(
+    null,
+  );
+
+  const waitForWorkerReady = async (workerId: string): Promise<boolean> => {
+    const deadline = Date.now() + WORKER_READY_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      try {
+        const logs = await getWorkerLogs(workerId);
+        if (hasWorkerReadySignal(logs)) {
+          return true;
+        }
+      } catch {
+        // Ignore transient log-read errors while worker boots.
+      }
+      await new Promise((resolve) => setTimeout(resolve, WORKER_READY_POLL_MS));
+    }
+    return false;
+  };
 
   if (!rigId) {
     return (
@@ -698,19 +836,19 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                   >
                     Instantiate
                   </button>
-                  {confirmDeleteId === t.template_id ? (
+                  {confirmDeleteTemplateId === t.template_id ? (
                     <div className="flex items-center gap-1 animate-fade-in">
                       <button
                         onClick={async () => {
                           await removeTemplate(t.template_id);
-                          setConfirmDeleteId(null);
+                          setConfirmDeleteTemplateId(null);
                         }}
                         className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-town-danger/15 text-town-danger"
                       >
                         Confirm
                       </button>
                       <button
-                        onClick={() => setConfirmDeleteId(null)}
+                        onClick={() => setConfirmDeleteTemplateId(null)}
                         className="px-1.5 py-0.5 text-[10px] text-town-text-muted"
                       >
                         Cancel
@@ -718,20 +856,10 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                     </div>
                   ) : (
                     <button
-                      onClick={() => setConfirmDeleteId(t.template_id)}
-                      className="p-1.5 rounded-md text-town-text-faint hover:text-town-danger transition-colors opacity-0 group-hover:opacity-100"
+                      onClick={() => setConfirmDeleteTemplateId(t.template_id)}
+                      className="btn-base !py-1 !px-2 !text-[10px] text-town-danger"
                     >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                      </svg>
+                      Delete
                     </button>
                   )}
                 </div>
@@ -776,7 +904,11 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                 step: WorkflowStep,
               ) => {
                 setRunError(null);
-                if (crews.length === 0) {
+                const runKey = `${instanceSnapshot.instance_id}:${step.step_id}`;
+                setLaunchingRunKey(runKey);
+                const targetCrew = selectCrewForStep(step, crews);
+                if (!targetCrew) {
+                  setLaunchingRunKey(null);
                   throw new Error(
                     "No active crew available. Create a crew before starting workflow steps.",
                   );
@@ -789,14 +921,74 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                 const prompt = command.trim() || step.title || step.step_id;
                 const agentType =
                   (step.agent_type || "codex").trim() || "codex";
-                const worker = await spawnWorker(crews[0].id, agentType, prompt);
+                const runPromptOnSpawn =
+                  agentType.toLowerCase() === "codex";
+                let phase: "spawn" | "ready" | "send" | "advance" = "spawn";
 
-                await advance(
-                  instanceSnapshot.instance_id,
-                  step.step_id,
-                  "running",
-                  worker.id,
-                );
+                try {
+                  // Reuse an existing running worker on the same crew+agent when possible
+                  // to avoid spawning duplicate terminals for each workflow step.
+                  const workers = await listWorkers(rigId);
+                  const existing = runPromptOnSpawn
+                    ? undefined
+                    : workers.find(
+                        (w) =>
+                          w.status === "running" &&
+                          w.crew_id === targetCrew.id &&
+                          w.agent_type === agentType,
+                      );
+
+                  let workerId: string;
+                  if (existing) {
+                    workerId = existing.id;
+                  } else {
+                    const worker = await spawnWorker(
+                      targetCrew.id,
+                      agentType,
+                      runPromptOnSpawn ? prompt : "",
+                      { skipPriming: true },
+                    );
+                    workerId = worker.id;
+
+                    if (!runPromptOnSpawn) {
+                      phase = "ready";
+                      const ready = await waitForWorkerReady(workerId);
+                      if (!ready) {
+                        setRunError(
+                          "Worker startup check timed out. Sending prompt anyway.",
+                        );
+                      }
+                    }
+                  }
+
+                  if (!runPromptOnSpawn) {
+                    phase = "send";
+                    await writeLineToWorker(workerId, prompt);
+                  }
+
+                  phase = "advance";
+                  await advance(
+                    instanceSnapshot.instance_id,
+                    step.step_id,
+                    "running",
+                    workerId,
+                  );
+                } catch (err) {
+                  const message = String(err);
+                  if (phase === "spawn") {
+                    setRunError(`Spawn failed: ${message}`);
+                  } else if (phase === "ready") {
+                    setRunError(`Worker readiness check failed: ${message}`);
+                  } else if (phase === "send") {
+                    setRunError(`Failed to send prompt: ${message}`);
+                  } else {
+                    setRunError(`Failed to mark step running: ${message}`);
+                  }
+                } finally {
+                  setLaunchingRunKey((current) =>
+                    current === runKey ? null : current,
+                  );
+                }
               };
 
               return (
@@ -804,6 +996,7 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                   key={inst.instance_id}
                   instance={inst}
                   template={tpl}
+                  launchingRunKey={launchingRunKey}
                   onAdvance={async (stepId, status) => {
                     await advance(inst.instance_id, stepId, status);
                   }}
@@ -817,7 +1010,7 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                   onStart={async () => {
                     try {
                       const started = await start(inst.instance_id);
-                      const firstReady = getFirstReadyStep(started, tpl);
+                      const firstReady = getFirstRunnableStep(started, tpl);
                       if (firstReady) {
                         await runStepWithWorker(started, firstReady);
                       }
@@ -828,6 +1021,27 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                   onCancel={async () => {
                     await cancel(inst.instance_id);
                   }}
+                  onDelete={async () => {
+                    try {
+                      setDeletingInstanceId(inst.instance_id);
+                      await removeInstance(inst.instance_id);
+                      setConfirmDeleteInstanceId((current) =>
+                        current === inst.instance_id ? null : current,
+                      );
+                    } catch (e) {
+                      setRunError(String(e));
+                    } finally {
+                      setDeletingInstanceId((current) =>
+                        current === inst.instance_id ? null : current,
+                      );
+                    }
+                  }}
+                  isDeleting={deletingInstanceId === inst.instance_id}
+                  isConfirmingDelete={
+                    confirmDeleteInstanceId === inst.instance_id
+                  }
+                  onAskDelete={() => setConfirmDeleteInstanceId(inst.instance_id)}
+                  onCancelDelete={() => setConfirmDeleteInstanceId(null)}
                 />
               );
             })}

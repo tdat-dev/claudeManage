@@ -502,15 +502,21 @@ export interface LogEntry {
   line: string;
 }
 
+export interface SpawnWorkerOptions {
+  skipPriming?: boolean;
+}
+
 export async function spawnWorker(
   crewId: string,
   agentType: string,
   initialPrompt: string,
+  options?: SpawnWorkerOptions,
 ): Promise<WorkerInfo> {
   return invoke<WorkerInfo>("spawn_worker", {
     crewId,
     agentType,
     initialPrompt,
+    skipPriming: options?.skipPriming ?? null,
   });
 }
 
@@ -536,6 +542,13 @@ export async function getWorkerLogs(id: string): Promise<LogEntry[]> {
 
 export async function writeToWorker(id: string, input: string): Promise<void> {
   return invoke<void>("write_to_worker", { id, input });
+}
+
+export async function writeLineToWorker(
+  id: string,
+  line: string,
+): Promise<void> {
+  return invoke<void>("write_line_to_worker", { id, line });
 }
 export async function resizeWorkerPty(
   id: string,
@@ -619,16 +632,11 @@ export interface AppSettings {
   default_template: string;
   default_cli: string;
   language: "en" | "vi";
-  // Startup priming
-  startup_priming_enabled: boolean;
-  priming_template: string | null;
-  priming_delay_ms: number;
-  // Propulsion & Witness
-  propulsion_enabled: boolean;
-  propulsion_interval_seconds: number;
-  witness_auto_spawn: boolean;
-  max_polecats_per_rig: number;
-  polecat_nudge_after_seconds: number;
+  ai_inbox_bridge: {
+    bind_addr: string;
+    token: string;
+    auto_start: boolean;
+  };
 }
 
 export async function getSettings(): Promise<AppSettings> {
@@ -1211,6 +1219,10 @@ export async function getWorkflowInstance(
   instanceId: string,
 ): Promise<WorkflowInstance> {
   return invoke<WorkflowInstance>("get_workflow_instance", { instanceId });
+}
+
+export async function deleteWorkflowInstance(instanceId: string): Promise<void> {
+  return invoke<void>("delete_workflow_instance", { instanceId });
 }
 
 export async function instantiateWorkflow(

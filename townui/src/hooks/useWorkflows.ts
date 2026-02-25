@@ -8,6 +8,7 @@ import {
   createWorkflowTemplate,
   deleteWorkflowTemplate,
   listWorkflowInstances,
+  deleteWorkflowInstance,
   instantiateWorkflow,
   startWorkflow,
   advanceStep,
@@ -72,6 +73,11 @@ export function useWorkflows(rigId: string | null) {
   const removeTemplate = useCallback(async (templateId: string) => {
     await deleteWorkflowTemplate(templateId);
     setTemplates((prev) => prev.filter((t) => t.template_id !== templateId));
+  }, []);
+
+  const removeInstance = useCallback(async (instanceId: string) => {
+    await deleteWorkflowInstance(instanceId);
+    setInstances((prev) => prev.filter((i) => i.instance_id !== instanceId));
   }, []);
 
   const instantiate = useCallback(
@@ -143,6 +149,7 @@ export function useWorkflows(rigId: string | null) {
     error,
     addTemplate,
     removeTemplate,
+    removeInstance,
     instantiate,
     start,
     advance,

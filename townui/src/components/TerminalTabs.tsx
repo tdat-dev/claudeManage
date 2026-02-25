@@ -83,7 +83,7 @@ export default function TerminalTabs({ rigId }: TerminalTabsProps) {
   // Spawn form state
   const [showSpawn, setShowSpawn] = useState(false);
   const [crewId, setCrewId] = useState("");
-  const [agentType, setAgentType] = useState("claude");
+  const [agentType, setAgentType] = useState("codex");
   const [prompt, setPrompt] = useState("");
   const [spawning, setSpawning] = useState(false);
   const [spawnError, setSpawnError] = useState<string | null>(null);
