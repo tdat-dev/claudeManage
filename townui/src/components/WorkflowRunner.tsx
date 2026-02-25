@@ -5,9 +5,11 @@ import {
   WorkflowStep,
   StepStatus,
   CrewInfo,
+  LogEntry,
   spawnWorker,
   listWorkers,
-  writeToWorker,
+  getWorkerLogs,
+  writeLineToWorker,
 } from "../lib/tauri";
 import { useWorkflows } from "../hooks/useWorkflows";
 import { useCrews } from "../hooks/useCrews";
@@ -124,6 +126,24 @@ function selectCrewForStep(
     return byName("devops") ?? byName("release") ?? crews[0];
   }
   return crews[0];
+}
+
+const WORKER_READY_TIMEOUT_MS = 8000;
+const WORKER_READY_POLL_MS = 300;
+
+function hasWorkerReadySignal(logs: LogEntry[]): boolean {
+  if (logs.length === 0) return false;
+  if (logs.some((l) => l.stream === "stdout" || l.stream === "stderr")) {
+    return true;
+  }
+  return logs.some((l) => {
+    const line = l.line.toLowerCase();
+    return (
+      line.includes("openai codex") ||
+      line.includes("session id") ||
+      line.includes("codex")
+    );
+  });
 }
 
 // ── Template Creator ──
@@ -414,6 +434,7 @@ function InstantiateForm({
 function InstanceView({
   instance,
   template,
+  launchingRunKey,
   onAdvance,
   onRunStep,
   onStart,
@@ -421,6 +442,7 @@ function InstanceView({
 }: {
   instance: WorkflowInstance;
   template: WorkflowTemplate | null;
+  launchingRunKey: string | null;
   onAdvance: (stepId: string, status: StepStatus) => Promise<void>;
   onRunStep: (step: WorkflowStep) => Promise<void>;
   onStart: () => Promise<void>;
@@ -493,6 +515,8 @@ function InstanceView({
             instance.status === "running" &&
             state.status === "pending" &&
             depsReady;
+          const stepRunKey = `${instance.instance_id}:${step.step_id}`;
+          const launchingThisStep = launchingRunKey === stepRunKey;
           const canDone = state.status === "running";
 
           return (
@@ -518,9 +542,10 @@ function InstanceView({
                 {canRun && (
                   <button
                     onClick={() => onRunStep(step)}
+                    disabled={launchingThisStep}
                     className="btn-primary !py-0.5 !px-2 !text-[10px]"
                   >
-                    ▶ Run
+                    {launchingThisStep ? "Starting..." : "▶ Run"}
                   </button>
                 )}
                 {canDone && (
@@ -575,9 +600,26 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
     useState<WorkflowTemplate | null>(null);
   const [tab, setTab] = useState<"instances" | "templates">("instances");
   const [runError, setRunError] = useState<string | null>(null);
+  const [launchingRunKey, setLaunchingRunKey] = useState<string | null>(null);
 
   // Confirm delete
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const waitForWorkerReady = async (workerId: string): Promise<boolean> => {
+    const deadline = Date.now() + WORKER_READY_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      try {
+        const logs = await getWorkerLogs(workerId);
+        if (hasWorkerReadySignal(logs)) {
+          return true;
+        }
+      } catch {
+        // Ignore transient log-read errors while worker boots.
+      }
+      await new Promise((resolve) => setTimeout(resolve, WORKER_READY_POLL_MS));
+    }
+    return false;
+  };
 
   if (!rigId) {
     return (
@@ -821,8 +863,11 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                 step: WorkflowStep,
               ) => {
                 setRunError(null);
+                const runKey = `${instanceSnapshot.instance_id}:${step.step_id}`;
+                setLaunchingRunKey(runKey);
                 const targetCrew = selectCrewForStep(step, crews);
                 if (!targetCrew) {
+                  setLaunchingRunKey(null);
                   throw new Error(
                     "No active crew available. Create a crew before starting workflow steps.",
                   );
@@ -835,45 +880,66 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                 const prompt = command.trim() || step.title || step.step_id;
                 const agentType =
                   (step.agent_type || "codex").trim() || "codex";
+                let phase: "spawn" | "ready" | "send" | "advance" = "spawn";
 
-                // Reuse an existing running worker on the same crew+agent when possible
-                // to avoid spawning duplicate terminals for each workflow step.
-                const workers = await listWorkers(rigId);
-                const existing = workers.find(
-                  (w) =>
-                    w.status === "running" &&
-                    w.crew_id === targetCrew.id &&
-                    w.agent_type === agentType,
-                );
+                try {
+                  // Reuse an existing running worker on the same crew+agent when possible
+                  // to avoid spawning duplicate terminals for each workflow step.
+                  const workers = await listWorkers(rigId);
+                  const existing = workers.find(
+                    (w) =>
+                      w.status === "running" &&
+                      w.crew_id === targetCrew.id &&
+                      w.agent_type === agentType,
+                  );
 
-                let workerId: string;
-                if (existing) {
-                  try {
-                    await writeToWorker(existing.id, `${prompt}\n`);
+                  let workerId: string;
+                  if (existing) {
                     workerId = existing.id;
-                  } catch {
+                  } else {
                     const worker = await spawnWorker(
                       targetCrew.id,
                       agentType,
-                      prompt,
+                      "",
+                      { skipPriming: true },
                     );
                     workerId = worker.id;
-                  }
-                } else {
-                  const worker = await spawnWorker(
-                    targetCrew.id,
-                    agentType,
-                    prompt,
-                  );
-                  workerId = worker.id;
-                }
 
-                await advance(
-                  instanceSnapshot.instance_id,
-                  step.step_id,
-                  "running",
-                  workerId,
-                );
+                    phase = "ready";
+                    const ready = await waitForWorkerReady(workerId);
+                    if (!ready) {
+                      setRunError(
+                        "Worker startup check timed out. Sending prompt anyway.",
+                      );
+                    }
+                  }
+
+                  phase = "send";
+                  await writeLineToWorker(workerId, prompt);
+
+                  phase = "advance";
+                  await advance(
+                    instanceSnapshot.instance_id,
+                    step.step_id,
+                    "running",
+                    workerId,
+                  );
+                } catch (err) {
+                  const message = String(err);
+                  if (phase === "spawn") {
+                    setRunError(`Spawn failed: ${message}`);
+                  } else if (phase === "ready") {
+                    setRunError(`Worker readiness check failed: ${message}`);
+                  } else if (phase === "send") {
+                    setRunError(`Failed to send prompt: ${message}`);
+                  } else {
+                    setRunError(`Failed to mark step running: ${message}`);
+                  }
+                } finally {
+                  setLaunchingRunKey((current) =>
+                    current === runKey ? null : current,
+                  );
+                }
               };
 
               return (
@@ -881,6 +947,7 @@ export default function WorkflowRunner({ rigId }: WorkflowRunnerProps) {
                   key={inst.instance_id}
                   instance={inst}
                   template={tpl}
+                  launchingRunKey={launchingRunKey}
                   onAdvance={async (stepId, status) => {
                     await advance(inst.instance_id, stepId, status);
                   }}

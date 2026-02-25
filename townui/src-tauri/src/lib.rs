@@ -136,6 +136,7 @@ pub fn run() {
             commands::workers::get_run_logs,
             commands::workers::open_in_explorer,
             commands::workers::write_to_worker,
+            commands::workers::write_line_to_worker,
             commands::workers::resize_worker_pty,
             commands::workers::spawn_polecat,
             commands::workers::set_run_model_tag,

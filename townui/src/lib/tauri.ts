@@ -502,15 +502,21 @@ export interface LogEntry {
   line: string;
 }
 
+export interface SpawnWorkerOptions {
+  skipPriming?: boolean;
+}
+
 export async function spawnWorker(
   crewId: string,
   agentType: string,
   initialPrompt: string,
+  options?: SpawnWorkerOptions,
 ): Promise<WorkerInfo> {
   return invoke<WorkerInfo>("spawn_worker", {
     crewId,
     agentType,
     initialPrompt,
+    skipPriming: options?.skipPriming ?? null,
   });
 }
 
@@ -536,6 +542,13 @@ export async function getWorkerLogs(id: string): Promise<LogEntry[]> {
 
 export async function writeToWorker(id: string, input: string): Promise<void> {
   return invoke<void>("write_to_worker", { id, input });
+}
+
+export async function writeLineToWorker(
+  id: string,
+  line: string,
+): Promise<void> {
+  return invoke<void>("write_line_to_worker", { id, line });
 }
 export async function resizeWorkerPty(
   id: string,

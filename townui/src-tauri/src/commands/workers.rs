@@ -670,11 +670,11 @@ fn spawn_worker_inner(
         },
         "codex" => {
             if initial_prompt.is_empty() {
-                cli_path.clone()
+                format!("{} -a never -s workspace-write", cli_path)
             } else {
                 // Run one-shot task first, then keep the session inside Codex interactive CLI.
                 format!(
-                    "{} exec --full-auto -c model_reasoning_effort=low \"{}\" && {}",
+                    "{} -a never -s workspace-write exec -c model_reasoning_effort=low \"{}\" && {} -a never -s workspace-write",
                     cli_path, prompt_for_shell, cli_path
                 )
             }
@@ -733,8 +733,11 @@ fn spawn_worker_inner(
 
         if agent_type.eq_ignore_ascii_case("codex") && !prompt_for_arg.is_empty() {
             cmd.args([
+                "-a",
+                "never",
+                "-s",
+                "workspace-write",
                 "exec",
-                "--full-auto",
                 "-c",
                 "model_reasoning_effort=low",
                 prompt_for_arg.as_str(),
@@ -1030,6 +1033,7 @@ pub(crate) fn spawn_worker_for_actor(
     crew_id: String,
     agent_type: String,
     initial_prompt: String,
+    skip_priming: bool,
     actor_id: Option<String>,
     app: AppHandle,
 ) -> Result<Worker, String> {
@@ -1069,7 +1073,9 @@ pub(crate) fn spawn_worker_for_actor(
             }
             state.save_workers(&workers);
         }
-        start_priming_if_enabled(&state, worker, &app);
+        if !skip_priming {
+            start_priming_if_enabled(&state, worker, &app);
+        }
         let _ = app.emit("data-changed", "");
     }
     res
@@ -1080,9 +1086,17 @@ pub fn spawn_worker(
     crew_id: String,
     agent_type: String,
     initial_prompt: String,
+    skip_priming: Option<bool>,
     app: AppHandle,
 ) -> Result<Worker, String> {
-    spawn_worker_for_actor(crew_id, agent_type, initial_prompt, None, app)
+    spawn_worker_for_actor(
+        crew_id,
+        agent_type,
+        initial_prompt,
+        skip_priming.unwrap_or(false),
+        None,
+        app,
+    )
 }
 
 #[tauri::command]
@@ -1432,6 +1446,21 @@ pub fn write_to_worker(id: String, input: String, state: State<AppState>) -> Res
         .ok_or_else(|| "No active writer for this worker".to_string())?;
     writer
         .write_all(input.as_bytes())
+        .map_err(|e| format!("Write failed: {}", e))?;
+    writer
+        .flush()
+        .map_err(|e| format!("Flush failed: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn write_line_to_worker(id: String, line: String, state: State<AppState>) -> Result<(), String> {
+    let mut writers = state.worker_writers.lock().unwrap();
+    let writer = writers
+        .get_mut(&id)
+        .ok_or_else(|| "No active writer for this worker".to_string())?;
+    writer
+        .write_all(format!("{}\r\n", line).as_bytes())
         .map_err(|e| format!("Write failed: {}", e))?;
     writer
         .flush()

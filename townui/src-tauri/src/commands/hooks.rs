@@ -243,6 +243,7 @@ fn auto_execute_hook_work(
         crew_id.clone(),
         agent_type.clone(),
         prompt,
+        false,
         Some(hook.attached_actor_id.clone()),
         app,
     )?;
@@ -654,6 +655,7 @@ pub fn resume_hook(hook_id: String, state: State<AppState>, app: AppHandle) -> R
         crew_id,
         agent_type,
         resume_prompt,
+        false,
         Some(updated.attached_actor_id.clone()),
         app,
     ) {
